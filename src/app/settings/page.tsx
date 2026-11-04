@@ -1,7 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Building2, HelpCircle, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
+import {
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  KeyRound,
+  Building2,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
+  Calendar,
+  CalendarCheck,
+  Clock,
+  Lock,
+  AlertTriangle,
+  Save,
+  Check,
+} from 'lucide-react';
 import { useCompany } from '@/contexts/CompanyContext';
 
 export default function SettingsPage() {
@@ -16,6 +33,15 @@ export default function SettingsPage() {
   const [message, setMessage] = useState<string>('');
   const [showInstructions, setShowInstructions] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Política de fecha de registro (Posting Date)
+  const [postingPolicy, setPostingPolicy] = useState<'auto' | 'today' | 'document'>('auto');
+  const [customPostingFrom, setCustomPostingFrom] = useState<string>('');
+  const [postingLimits, setPostingLimits] = useState<any>(null);
+  const [postingLoading, setPostingLoading] = useState<boolean>(true);
+  const [postingSaving, setPostingSaving] = useState<boolean>(false);
+  const [postingSuccess, setPostingSuccess] = useState<boolean>(false);
+  const [postingError, setPostingError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/bc-config')
@@ -40,6 +66,19 @@ export default function SettingsPage() {
         console.error('Error al cargar configuración:', e);
       })
       .finally(() => setLoading(false));
+
+    // Cargar política de fecha de registro y límites de periodos de BC
+    fetch('/api/bc-config/posting-policy')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok) {
+          if (data.policy) setPostingPolicy(data.policy);
+          if (data.customPostingFrom) setCustomPostingFrom(data.customPostingFrom);
+          if (data.limits) setPostingLimits(data.limits);
+        }
+      })
+      .catch((e) => console.error('Error al cargar política de registro:', e))
+      .finally(() => setPostingLoading(false));
   }, []);
 
   const handleSaveAndTest = async () => {
@@ -73,6 +112,33 @@ export default function SettingsPage() {
     } catch (err: any) {
       setStatus('error');
       setMessage(err.message || 'Error de red al intentar conectar.');
+    }
+  };
+
+  const handleSavePostingPolicy = async () => {
+    setPostingSaving(true);
+    setPostingSuccess(false);
+    setPostingError(null);
+    try {
+      const res = await fetch('/api/bc-config/posting-policy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          policy: postingPolicy,
+          customPostingFrom: customPostingFrom || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setPostingSuccess(true);
+        setTimeout(() => setPostingSuccess(false), 4000);
+      } else {
+        setPostingError(data.error || 'Error al guardar la política.');
+      }
+    } catch (e: any) {
+      setPostingError(e.message || 'Error de red.');
+    } finally {
+      setPostingSaving(false);
     }
   };
 
@@ -203,6 +269,245 @@ export default function SettingsPage() {
               <>
                 <ShieldCheck size={16} />
                 <span>Probar y Guardar Conexión</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Tarjeta de Política de Fecha de Registro (Posting Date) */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+              <CalendarCheck size={22} />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Fecha de Registro en Business Central (Posting Date)</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Define cómo debe asignarse la fecha de registro al procesar facturas y abonos, protegiendo periodos contables e IVA ya cerrados.
+              </p>
+            </div>
+          </div>
+          {postingLimits?.companyName && (
+            <span className="text-xs self-start sm:self-auto bg-slate-100 text-slate-700 font-medium px-2.5 py-1 rounded-md border border-slate-200">
+              🏢 {postingLimits.companyName}
+            </span>
+          )}
+        </div>
+
+        {/* Opciones de Política */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Opción 1: Auto */}
+          <div
+            onClick={() => setPostingPolicy('auto')}
+            className={`cursor-pointer rounded-xl p-4 border-2 transition-all relative flex flex-col justify-between ${
+              postingPolicy === 'auto'
+                ? 'border-indigo-600 bg-indigo-50/30 shadow-xs'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  Recomendado
+                </span>
+                <input
+                  type="radio"
+                  name="postingPolicy"
+                  checked={postingPolicy === 'auto'}
+                  onChange={() => setPostingPolicy('auto')}
+                  className="text-indigo-600 focus:ring-indigo-500"
+                />
+              </div>
+              <h3 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-1.5">
+                <Clock size={16} className="text-indigo-600" />
+                Automático (Inteligente)
+              </h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Usa la fecha de la factura si el periodo contable e IVA están abiertos en BC. Si el periodo está cerrado o bloqueado, asigna automáticamente la <strong>fecha de hoy</strong> para evitar errores.
+              </p>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-gray-100 text-[11px] text-gray-500">
+              Evita bloqueos de Business Central si llegan facturas atrasadas.
+            </div>
+          </div>
+
+          {/* Opción 2: Siempre fecha de hoy */}
+          <div
+            onClick={() => setPostingPolicy('today')}
+            className={`cursor-pointer rounded-xl p-4 border-2 transition-all relative flex flex-col justify-between ${
+              postingPolicy === 'today'
+                ? 'border-indigo-600 bg-indigo-50/30 shadow-xs'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+                  Cierre estricto
+                </span>
+                <input
+                  type="radio"
+                  name="postingPolicy"
+                  checked={postingPolicy === 'today'}
+                  onChange={() => setPostingPolicy('today')}
+                  className="text-indigo-600 focus:ring-indigo-500"
+                />
+              </div>
+              <h3 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-1.5">
+                <Calendar size={16} className="text-indigo-600" />
+                Siempre fecha de hoy
+              </h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Registra siempre con la fecha del día actual, sin importar la fecha que indique el documento escaneado.
+              </p>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-gray-100 text-[11px] text-gray-500">
+              Ideal para empresas que cierran meses y nunca alteran periodos pasados.
+            </div>
+          </div>
+
+          {/* Opción 3: Siempre fecha del documento */}
+          <div
+            onClick={() => setPostingPolicy('document')}
+            className={`cursor-pointer rounded-xl p-4 border-2 transition-all relative flex flex-col justify-between ${
+              postingPolicy === 'document'
+                ? 'border-indigo-600 bg-indigo-50/30 shadow-xs'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  Manual
+                </span>
+                <input
+                  type="radio"
+                  name="postingPolicy"
+                  checked={postingPolicy === 'document'}
+                  onChange={() => setPostingPolicy('document')}
+                  className="text-indigo-600 focus:ring-indigo-500"
+                />
+              </div>
+              <h3 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-1.5">
+                <AlertTriangle size={16} className="text-amber-600" />
+                Siempre fecha del documento
+              </h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Mantiene siempre la fecha original que consta en el OCR de la factura, incluso si el periodo está cerrado en BC.
+              </p>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-gray-100 text-[11px] text-gray-500">
+              Puede provocar errores de registro en BC si el periodo no está abierto.
+            </div>
+          </div>
+        </div>
+
+        {/* Panel de estado detectado en Business Central */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <Lock size={14} className="text-slate-500" />
+              Estado contable y periodos detectados en Business Central
+            </h4>
+            {postingLoading && (
+              <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                <RefreshCw size={12} className="animate-spin" /> Consultando BC...
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="bg-white p-3 rounded-lg border border-slate-200">
+              <span className="text-gray-500 block mb-0.5">Configuración Contabilidad (GL):</span>
+              <span className="font-semibold text-gray-900">
+                {postingLimits?.allowPostingFrom && postingLimits.allowPostingFrom !== '0001-01-01'
+                  ? `Permitir desde: ${postingLimits.allowPostingFrom.split('-').reverse().join('/')}`
+                  : 'Sin fecha límite fijada (abierto)'}
+              </span>
+            </div>
+
+            <div className="bg-white p-3 rounded-lg border border-slate-200">
+              <span className="text-gray-500 block mb-0.5">Último periodo cerrado en BC:</span>
+              <span className="font-semibold text-amber-700">
+                {postingLimits?.latestClosedPeriod
+                  ? `${postingLimits.latestClosedPeriod.name} (${postingLimits.latestClosedPeriod.startingDate.split('-').reverse().join('/')})`
+                  : 'Ninguno bloqueado'}
+              </span>
+            </div>
+
+            <div className="bg-white p-3 rounded-lg border border-slate-200">
+              <span className="text-gray-500 block mb-0.5">Fecha mínima permitida para registro:</span>
+              <span className="font-bold text-emerald-700 text-sm">
+                {postingLimits?.earliestAllowedDate
+                  ? postingLimits.earliestAllowedDate.split('-').reverse().join('/')
+                  : 'Sin restricción'}
+              </span>
+            </div>
+          </div>
+
+          {/* Override manual opcional */}
+          <div className="pt-2 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-gray-600">
+              <span className="font-medium text-gray-800">Fecha mínima manual adicional (opcional):</span>
+              <p className="text-[11px] text-gray-500">
+                Si deseas adelantar el corte contable/IVA manualmente antes de bloquear los periodos en BC.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customPostingFrom}
+                onChange={(e) => setCustomPostingFrom(e.target.value)}
+                className="text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-mono text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              {customPostingFrom && (
+                <button
+                  type="button"
+                  onClick={() => setCustomPostingFrom('')}
+                  className="text-[11px] text-gray-400 hover:text-red-500 underline"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Feedback y botón de guardar */}
+        <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+          <div className="text-xs">
+            {postingSuccess && (
+              <span className="text-emerald-600 font-medium flex items-center gap-1">
+                <Check size={16} /> Política de fecha de registro guardada con éxito.
+              </span>
+            )}
+            {postingError && (
+              <span className="text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle size={16} /> {postingError}
+              </span>
+            )}
+            {!postingSuccess && !postingError && (
+              <span className="text-gray-500">
+                Los cambios se aplicarán inmediatamente a las facturas procesadas con el OCR.
+              </span>
+            )}
+          </div>
+          <button
+            onClick={handleSavePostingPolicy}
+            disabled={postingSaving}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium text-sm px-5 py-2.5 rounded-lg shadow-sm transition-all"
+          >
+            {postingSaving ? (
+              <>
+                <RefreshCw size={16} className="animate-spin" />
+                <span>Guardando...</span>
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                <span>Guardar Política de Fecha</span>
               </>
             )}
           </button>

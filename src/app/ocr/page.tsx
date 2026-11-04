@@ -17,6 +17,8 @@ type Suggestion = {
   documentType: string; invoiceNo: string; invoiceDate: string; postingDate: string; dueDate: string; postingDescription: string;
   currency: string; net: number | null; vat: number | null; total: number | null; lines: Line[]; comment: string;
   isReverseCharge?: boolean;
+  postingDateAdjusted?: boolean;
+  postingDateReason?: string | null;
 };
 type Doc = {
   file: string; error?: string; loading?: boolean; scanned: boolean; currency: string; ids: string[];
@@ -625,7 +627,18 @@ function DocCard({ d, f, fileObj, attachments, accounts, loadingAccounts, items,
               {isCredit ? 'Fecha abono' : 'Fecha factura'}
               <input type="date" value={f.invoiceDate} onChange={e => setField('invoiceDate', e.target.value)} className={`${input} block mt-1`} />
             </label>
-            <label className="text-xs font-semibold text-gray-500">Fecha registro
+            <label className="text-xs font-semibold text-gray-500">
+              <span className="flex items-center gap-1.5">
+                <span>Fecha registro</span>
+                {(d.suggestion?.postingDateAdjusted || (f.postingDate && f.invoiceDate && f.postingDate !== f.invoiceDate)) && (
+                  <span
+                    className="text-[10px] font-medium text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded cursor-help"
+                    title={d.suggestion?.postingDateReason || `Fecha ajustada a hoy (${f.postingDate.split('-').reverse().join('/')}) por periodo cerrado o política de setup`}
+                  >
+                    ⚡ Ajustada a hoy
+                  </span>
+                )}
+              </span>
               <input type="date" value={f.postingDate} onChange={e => setField('postingDate', e.target.value)} className={`${input} block mt-1`} />
             </label>
             <label className="text-xs font-semibold text-gray-500">Vencimiento <span className="font-normal">(vacío: según términos de pago)</span>

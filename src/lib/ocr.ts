@@ -2,6 +2,7 @@ import { getDocumentProxy, extractText } from 'unpdf';
 import { bcFetchAll, BcContext, odataUrl } from '@/lib/bcClient';
 import { attachFile, bcRequest } from '@/lib/bcWrite';
 import { cached, readSetting, writeSetting, HOUR } from '@/lib/cache';
+import { determinePostingDate } from '@/lib/bcPostingPeriod';
 
 // OCR de facturas de compra: del PDF de un proveedor a una Purchase Invoice sin registrar en BC.
 // 1. Texto del PDF con unpdf (un escaneo sin texto no se puede leer).
@@ -58,6 +59,8 @@ export type OcrSuggestion = {
   lines: OcrLine[];
   comment: string;
   isReverseCharge?: boolean;
+  postingDateAdjusted?: boolean;
+  postingDateReason?: string | null;
 };
 
 export type OcrResult = {
@@ -1038,8 +1041,22 @@ export async function processPdf(ctx: BcContext, file: string, data: Uint8Array,
   if (finalCurrency === 'EU') finalCurrency = 'EUR';
 
   const suggestion = propose(text, history, file, vendor, finalCurrency);
-  if (suggestion?.documentType === 'credit_note') {
-    warnings.push('El documento ha sido detectado como abono / factura rectificativa.');
+  if (suggestion) {
+    if (suggestion.documentType === 'credit_note') {
+      warnings.push('El documento ha sido detectado como abono / factura rectificativa.');
+    }
+    // Determinar la fecha de registro según política y periodos contables/IVA de Business Central
+    try {
+      const postingCheck = await determinePostingDate(suggestion.invoiceDate, ctx);
+      suggestion.postingDate = postingCheck.postingDate;
+      suggestion.postingDateAdjusted = postingCheck.wasAdjusted;
+      suggestion.postingDateReason = postingCheck.reason;
+      if (postingCheck.wasAdjusted && postingCheck.reason) {
+        warnings.push(postingCheck.reason);
+      }
+    } catch (err: any) {
+      console.error('Error al validar fecha de registro con periodos de BC:', err);
+    }
   }
 
   const existing = vendor && suggestion?.invoiceNo ? await existingFor(ctx, vendor.number, suggestion.invoiceNo, suggestion.documentType) : [];
