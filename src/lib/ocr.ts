@@ -735,12 +735,24 @@ function cleanInvoiceCandidate(raw: string): string {
 
 export function guessHeader(t: string, filename?: string) {
   let invoiceNo = '';
+  let tableInvDate = '';
+  let tableDueDate = '';
+
+  // 0. Tabla estándar de cabecera ERP:
+  // "FACTURA FECHA FECHA VENC. COD. CLIENTE NIF CLIENTE SU REF. PÁG. FV26-00167 31/10/2026 31/10/2026 C00040 1"
+  const headerTableMatch = t.match(/(?:FACTURA|INVOICE)\s+FECHA\s+FECHA\s+VENC[^\w]*?(?:COD[^\w]*CLIENTE[^\w]*NIF[^\w]*CLIENTE[^\w]*SU[^\w]*REF[^\w]*P[ÁA]G[^\w]*?)?([A-Z0-9\-_\/.]{3,})\s+(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\s+(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i);
+  if (headerTableMatch) {
+    const c = cleanInvoiceCandidate(headerTableMatch[1]);
+    if (c) invoiceNo = c;
+    tableInvDate = parseDate(headerTableMatch[2]);
+    tableDueDate = parseDate(headerTableMatch[3]);
+  }
 
   // 1. Patrones específicos de abono / nota de crédito / rectificativa en 9 idiomas
   const creditNotePatterns = [
     // ES
     /(?:n[úu]mero\s+(?:de\s+)?(?:la\s+)?nota\s+de\s+cr[eé]dito|n[úu]mero\s+(?:de\s+)?abono|n[úu]mero\s+(?:de\s+)?factura\s+rectificativa|n[º°o]\.?\s+(?:de\s+)?(?:abono|nota\s+de\s+cr[eé]dito|rectificativa))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
-    /(?:factura\s+rectificativa|f\.?\s*rectificativa|factura\s+abono)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    /(?:abono(?:\s+de\s+venta)?|factura\s+rectificativa|f\.?\s*rectificativa|factura\s+abono)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
     // DE
     /(?:gutschriftennummer|gutschriftsnummer|gutschrifts?-?nr\.?|gutschrifts?-?nummer|korrekturnummer)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
     // EN
@@ -779,6 +791,10 @@ export function guessHeader(t: string, filename?: string) {
   // 3. Patrones de número de factura en los 9 idiomas
   if (!invoiceNo) {
     const invoicePatterns = [
+      // Factura de venta / Abono de venta
+      /(?<!original\s+|rectificada\s+)(?:factura(?:\s+de\s+venta)?|abono(?:\s+de\s+venta)?)\s*[:#]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // Series típicas Business Central / ERP España (FV26-00167, AV26-0001, FC26-02888, AC26-00012)
+      /\b((?:FV|AV|FC|AC|FA|AB)\d{2}-\d{4,6})\b/i,
       // FR / BE
       /(?<!d['’]origine\s+)(?:num[ée]ro\s+de\s+facture|n[º°o]\s+de\s+facture|facture\s+n[º°o]?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
       // IT
@@ -873,22 +889,27 @@ export function guessHeader(t: string, filename?: string) {
     }
     if (invoiceDate) break;
   }
+  if (!invoiceDate && tableInvDate) {
+    invoiceDate = tableInvDate;
+  }
   if (!invoiceDate) {
     invoiceDate = dates(t.slice(0, 1500)).find(d => parseInt(d.iso.slice(0, 4), 10) >= 2020)?.iso || '';
   }
 
-  let dueDate = '';
+  let dueDate = tableDueDate || '';
   const DUE_KEYWORDS = [
-    /(?:termin\s+p[łl]atno[śs]ci|f[öo]rfallodatum|due\s+date|payment\s+due|fecha\s+(?:de\s+)?vencimiento|vencimiento|f[äa]lligkeitsdatum|f[äa]llig\s+am|date\s+d['’]?[eé]ch[eé]ance|[eé]ch[eé]ance|scadenza|data\s+di\s+scadenza|vervaldatum|datum\s+splatnosti|splatnost)\s*[:.]?\s*/iu,
+    /(?:termin\s+p[łl]atno[śs]ci|f[öo]rfallodatum|due\s+date|payment\s+due|fecha\s+(?:de\s+)?vencimiento|fecha\s+venc\.?|vencimiento|f[äa]lligkeitsdatum|f[äa]llig\s+am|date\s+d['’]?[eé]ch[eé]ance|[eé]ch[eé]ance|scadenza|data\s+di\s+scadenza|vervaldatum|datum\s+splatnosti|splatnost)\s*[:.]?\s*/iu,
   ];
-  for (const re of DUE_KEYWORDS) {
-    const m = t.match(re);
-    if (m) {
-      const slice = t.slice(m.index! + m[0].length, m.index! + m[0].length + 60);
-      const dm = dates(slice);
-      if (dm[0]?.iso) {
-        dueDate = dm[0].iso;
-        break;
+  if (!dueDate) {
+    for (const re of DUE_KEYWORDS) {
+      const m = t.match(re);
+      if (m) {
+        const slice = t.slice(m.index! + m[0].length, m.index! + m[0].length + 100);
+        const dm = dates(slice);
+        if (dm[0]?.iso) {
+          dueDate = dm[0].iso;
+          break;
+        }
       }
     }
   }
@@ -946,6 +967,33 @@ export function totals(t: string) {
     }
   }
 
+  // 0b. Tabla de desglose de impuestos estándar ERP español / europeo (BRUTO BASE % IVA IVA o BASE % IVA CUOTA)
+  if (net == null || total == null) {
+    const taxTable4 = t.match(/BRUTO\s+BASE(?:\s+IMPONIBLE)?\s+%\s*(?:IVA|IGIC|TVA|VAT)?\s+(?:CUOTA\s+)?(?:IVA|IGIC|TVA|VAT)\s+([\d.,']+)\s+([\d.,']+)\s+([\d.,']+)\s+([\d.,']+)/i);
+    if (taxTable4) {
+      const b = parseAmount(taxTable4[2]);
+      const v = parseAmount(taxTable4[4]);
+      if (b != null) {
+        net = b;
+        vat = v ?? 0;
+        total = Math.round((b + (v ?? 0)) * 100) / 100;
+      }
+    }
+  }
+
+  if (net == null || total == null) {
+    const taxTable3 = t.match(/(?:BASE\s+IMPONIBLE|BASE)\s+%\s*(?:IVA|IGIC|TVA|VAT)\s+(?:CUOTA\s+IVA|CUOTA)\s+([\d.,']+)\s+([\d.,']+)\s+([\d.,']+)/i);
+    if (taxTable3) {
+      const b = parseAmount(taxTable3[1]);
+      const v = parseAmount(taxTable3[3]);
+      if (b != null) {
+        net = b;
+        vat = v ?? 0;
+        total = Math.round((b + (v ?? 0)) * 100) / 100;
+      }
+    }
+  }
+
   const numRe = String.raw`[-–—]?(?:[A-Z]{3}|[$€£])?\s*[-–—]?\s*\d[\d.,'\s]*`;
   const wbStart = String.raw`(?<![\p{L}\p{N}])`;
   const wbEnd = String.raw`(?![\p{L}\p{N}])`;
@@ -969,6 +1017,8 @@ export function totals(t: string) {
       new RegExp(wbStart + String.raw`(?:total\s+amount\s+due|invoice\s+amount\s+due|total\s+due|amount\s+due|total\s+payable|balance\s+due|grand\s+total)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       // Español
       new RegExp(wbStart + String.raw`(?:importe\s+(?:de\s+la\s+)?factura\s+debido|importe\s+total(?:\s+debido)?|total\s+(?:factura|a\s+pagar|importe|documento))` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Total con divisa al final (ej. recuadros de totales con datos bancarios interpuestos)
+      new RegExp(wbStart + String.raw`(?:TOTAL|TOTAL\s+FACTURA|IMPORTE\s+TOTAL)\b[^\d€$£]{0,100}?(${numRe})\s*[$€£]`, 'iu'),
       // Genérico internacional
       new RegExp(wbStart + String.raw`(?:f[öo]rfallna\s+fakturabelopp|totalt\s+belopp(?:\s*\(inkl[.]?\s*moms\))?)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       new RegExp(wbStart + String.raw`(?:total|totale|razem|celkem)(?!\s+(?:des\s+frais|cargos|tarifas|frais|delle|partiel|delle\s+regolatorie|regulatory|de\s+la\s+campagne|frais\s+publicitaires))` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
@@ -1028,8 +1078,9 @@ export function totals(t: string) {
     }
   }
 
-  // Coherencia para operaciones con inversión de sujeto pasivo (Reverse charge / 0% IVA)
-  if ((isReverseCharge || isTaxFree) && (!vat || vat === 0)) {
+  // Coherencia para operaciones con inversión de sujeto pasivo o exentas (Reverse charge / 0% IVA)
+  const effectiveTaxFree = isTaxFree || (vat === 0 && (net != null || total != null));
+  if ((isReverseCharge || effectiveTaxFree) && (!vat || vat === 0)) {
     if (total != null && net == null) net = total;
     if (net != null && total == null) total = net;
   }
@@ -1043,7 +1094,7 @@ export function totals(t: string) {
     }
   }
 
-  if ((isReverseCharge || isTaxFree) && (!vat || vat === 0)) {
+  if ((isReverseCharge || effectiveTaxFree) && (!vat || vat === 0)) {
     const finalTotal = total ?? net;
     const finalNet = net ?? total;
     return {

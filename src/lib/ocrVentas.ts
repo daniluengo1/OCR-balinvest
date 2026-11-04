@@ -496,20 +496,20 @@ export function proposeSales(
   const reverseChargeEffective = Boolean(
     (isReverseCharge || (isEuCustomer && (!absVat || absVat === 0))) && (!absVat || absVat === 0)
   );
+  const isZeroVat = absVat === 0 || reverseChargeEffective;
 
   let defaultTaxCode = 'IVA21';
-  if (reverseChargeEffective) {
-    defaultTaxCode = 'IVA21';
+  if (isZeroVat) {
+    defaultTaxCode = 'EXENTO';
   } else if (absNet != null && absVat != null && absNet > 0) {
     const r = Math.round((absVat / absNet) * 100);
     if (r >= 18 && r <= 25) defaultTaxCode = 'IVA21';
     else if (r >= 8 && r <= 15) defaultTaxCode = 'IVA10';
     else if (r >= 3 && r <= 6) defaultTaxCode = 'IVA4';
-    else if (absVat === 0) defaultTaxCode = 'EXENTO';
   }
 
   let effectiveNet = absNet;
-  if (effectiveNet == null && absTotal != null && (reverseChargeEffective || !absVat || absVat === 0)) {
+  if (effectiveNet == null && absTotal != null && isZeroVat) {
     effectiveNet = absTotal;
   }
 
@@ -527,15 +527,15 @@ export function proposeSales(
   if (model && model.lines.length) {
     lines = model.lines.map(l => ({
       ...l,
-      taxCode: l.taxCode && !l.taxCode.startsWith('477') ? l.taxCode : defaultTaxCode,
-      vatAmount: reverseChargeEffective ? 0 : (l.vatAmount != null ? Math.abs(l.vatAmount) : 0),
+      taxCode: isZeroVat ? 'EXENTO' : (l.taxCode && !l.taxCode.startsWith('477') ? l.taxCode : defaultTaxCode),
+      vatAmount: isZeroVat ? 0 : (l.vatAmount != null ? Math.abs(l.vatAmount) : 0),
     }));
 
     if (effectiveNet != null) {
       if (lines.length === 1) {
         lines[0].quantity = 1;
         lines[0].unitCost = effectiveNet;
-        lines[0].vatAmount = reverseChargeEffective ? 0 : (absVat != null ? absVat : r2(effectiveNet * 0.21));
+        lines[0].vatAmount = isZeroVat ? 0 : (absVat != null ? absVat : r2(effectiveNet * 0.21));
       } else {
         const sum = lines.reduce((a, l) => a + Math.abs(l.quantity) * Math.abs(l.unitCost), 0) || 1;
         lines.forEach(l => {
@@ -543,7 +543,7 @@ export function proposeSales(
           const prevPrice = Math.abs(l.unitCost);
           l.quantity = qty;
           l.unitCost = r2((effectiveNet * (qty * prevPrice)) / sum / qty);
-          l.vatAmount = reverseChargeEffective ? 0 : (absVat != null ? r2((absVat * (qty * l.unitCost)) / effectiveNet) : r2(l.unitCost * 0.21));
+          l.vatAmount = isZeroVat ? 0 : (absVat != null ? r2((absVat * (qty * l.unitCost)) / effectiveNet) : r2(l.unitCost * 0.21));
         });
       }
     }
@@ -557,13 +557,13 @@ export function proposeSales(
       quantity: 1,
       unitCost: effectiveNet || 0,
       taxCode: defaultTaxCode,
-      vatAmount: reverseChargeEffective ? 0 : (absVat != null ? absVat : (effectiveNet ? r2(effectiveNet * 0.21) : 0)),
+      vatAmount: isZeroVat ? 0 : (absVat != null ? absVat : (effectiveNet ? r2(effectiveNet * 0.21) : 0)),
     }];
   }
 
   let comment = '';
-  if (reverseChargeEffective) {
-    comment = 'Entrega intracomunitaria / Inversión de sujeto pasivo (art. 25 LIVA / Directiva 2006/112/CE) · 0% IVA en factura.';
+  if (isZeroVat) {
+    comment = 'Operación con 0% IVA / Exenta / Exportación o entrega intracomunitaria.';
   } else if (isCreditNote) {
     comment = model
       ? `Abono de venta basado en factura anterior ${model.number}`
