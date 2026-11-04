@@ -361,6 +361,48 @@ async function itemNamesMap(ctx: BcContext): Promise<Map<string, string>> {
   }).then(obj => new Map(Object.entries(obj)));
 }
 
+function parseBcLines(rawLines: any[], itmMap: Map<string, string>, accMap: Map<string, string>): OcrLine[] {
+  return rawLines.map((l: any) => {
+    const rawType = String(l.Type || l.type || l.FilteredTypeField || '').trim();
+    let lineType: 'Account' | 'Item' | 'Resource' | 'Fixed Asset' | 'Charge' | 'Comment' = 'Account';
+    if (/item|art[ií]culo/i.test(rawType) || rawType === '1' || l.lineObjectNumber) {
+      lineType = 'Item';
+    } else if (/account|cuenta|g_x002f_l|g\/l/i.test(rawType) || rawType === '2') {
+      lineType = 'Account';
+    } else if (/fixed|activo/i.test(rawType)) {
+      lineType = 'Fixed Asset';
+    } else if (/charge|cargo/i.test(rawType)) {
+      lineType = 'Charge';
+    }
+
+    const number = String(l.No || l.No_ || l.no || l.lineObjectNumber || '').trim();
+    let description = String(l.Description || l.description || '').trim();
+    if (itmMap.has(number) && (!accMap.has(number) || lineType === 'Item')) {
+      lineType = 'Item';
+    }
+    if (lineType === 'Item' && itmMap.has(number)) {
+      description = itmMap.get(number) || description;
+    } else if (lineType === 'Account' && accMap.has(number)) {
+      description = accMap.get(number) || description;
+    }
+
+    const qty = Math.abs(parseFloat(l.Quantity || l.quantity || '1')) || 1;
+    const cost = Math.abs(parseFloat(l.Direct_Unit_Cost || l.directUnitCost || l.Unit_Cost || l.unitCost || '0')) || 0;
+    const taxCode = String(l.VAT_Prod_Posting_Group || l.vatProdPostingGroup || l.taxCode || 'IVA21').trim();
+
+    return {
+      lineType,
+      number,
+      description: description || (lineType === 'Item' ? `Artículo ${number}` : `Cuenta ${number}`),
+      description2: String(l.Description_2 || l.description2 || '').trim(),
+      quantity: qty,
+      unitCost: cost,
+      taxCode,
+      vatAmount: Math.round(cost * (taxCode === 'IVA21' ? 0.21 : 0.10) * 100) / 100,
+    };
+  }).filter((l: OcrLine) => l.number || l.description);
+}
+
 export async function vendorHistory(ctx: BcContext, vendor: string) {
   try {
     const [accMap, itmMap] = await Promise.all([
@@ -408,68 +450,38 @@ export async function vendorHistory(ctx: BcContext, vendor: string) {
         const docNo = inv.No;
         let lines: OcrLine[] = [];
 
-        // 1. Intentar consultar las Líneas de Factura de Compra Registradas (Purch. Inv. Line - Tabla 123)
-        // Permite recuperar tanto Artículos (Item) como Cuentas Contables (Account)
-        const lineServices = [
-          'Hist%C3%B3rico_facturas_compra_l%C3%ADneas_Excel',
-          'Hist%C3%B3rico_facturas_compra_lineas_Excel',
-          'L%C3%ADneas_factura_compra_reg_Excel',
-          'L%C3%ADneas_factura_compra_Excel',
-          'Lineas_factura_compra_reg_Excel',
-          'Lineas_factura_compra_Excel',
-          'Posted_Purchase_Invoice_Lines_Excel',
-          'Purch_Inv_Lines_Excel',
-          'Purch_Inv_Line_Excel',
-        ];
+        // 1. Consultar las Líneas de Factura de Compra Registradas (Purch. Inv. Line - Tabla 123)
+        // Probamos primero por la propiedad de navegación directa de la factura:
+        try {
+          const navUrl = `${targetOData}/Hist%C3%B3rico_facturas_compra_Excel('${encodeURIComponent(docNo)}')/Hist%C3%B3rico_facturas_compra_ExcelPurchInvLines`;
+          const navRes = await bcGet(ctx, navUrl);
+          if (navRes.value && navRes.value.length > 0) {
+            lines = parseBcLines(navRes.value, itmMap, accMap);
+          }
+        } catch {}
 
-        for (const s of lineServices) {
-          try {
-            const lRes = await bcGet(ctx, odataUrl(`${targetOData}/${s}`, {
-              $filter: `Document_No eq '${q(docNo)}'`,
-            }));
-            if (lRes.value && lRes.value.length > 0) {
-              lines = lRes.value.map((l: any) => {
-                const rawType = String(l.Type || l.type || '').trim();
-                let lineType: 'Account' | 'Item' | 'Resource' | 'Fixed Asset' | 'Charge' | 'Comment' = 'Account';
-                if (/item|art[ií]culo/i.test(rawType) || rawType === '1' || l.lineObjectNumber) {
-                  lineType = 'Item';
-                } else if (/account|cuenta|g_x002f_l|g\/l/i.test(rawType) || rawType === '2') {
-                  lineType = 'Account';
-                } else if (/fixed|activo/i.test(rawType)) {
-                  lineType = 'Fixed Asset';
-                } else if (/charge|cargo/i.test(rawType)) {
-                  lineType = 'Charge';
-                }
+        // Si no, probamos por el servicio directo con filtro
+        if (!lines.length) {
+          const lineServices = [
+            'Hist%C3%B3rico_facturas_compra_ExcelPurchInvLines',
+            'Hist%C3%B3rico_facturas_compra_l%C3%ADneas_Excel',
+            'Hist%C3%B3rico_facturas_compra_lineas_Excel',
+            'L%C3%ADneas_factura_compra_reg_Excel',
+            'Purch_Inv_Lines_Excel',
+            'Purchase_Order_Line_Excel',
+          ];
 
-                const number = String(l.No || l.No_ || l.no || l.lineObjectNumber || '').trim();
-                let description = String(l.Description || l.description || '').trim();
-                if (itmMap.has(number) && (!accMap.has(number) || lineType === 'Item')) {
-                  lineType = 'Item';
-                }
-                if (lineType === 'Item' && itmMap.has(number)) {
-                  description = itmMap.get(number) || description;
-                } else if (lineType === 'Account' && accMap.has(number)) {
-                  description = accMap.get(number) || description;
-                }
-
-                const qty = Math.abs(parseFloat(l.Quantity || l.quantity || '1')) || 1;
-                const cost = Math.abs(parseFloat(l.Direct_Unit_Cost || l.directUnitCost || l.Unit_Cost || l.unitCost || '0')) || 0;
-                const taxCode = String(l.VAT_Prod_Posting_Group || l.vatProdPostingGroup || l.taxCode || 'IVA21').trim();
-
-                return {
-                  lineType,
-                  number,
-                  description: description || (lineType === 'Item' ? `Artículo ${number}` : `Cuenta ${number}`),
-                  description2: String(l.Description_2 || l.description2 || '').trim(),
-                  quantity: qty,
-                  unitCost: cost,
-                  taxCode,
-                  vatAmount: Math.round(cost * (taxCode === 'IVA21' ? 0.21 : 0.10) * 100) / 100,
-                };
-              }).filter((l: OcrLine) => l.number || l.description);
-              if (lines.length > 0) break;
-            }
-          } catch {}
+          for (const s of lineServices) {
+            try {
+              const lRes = await bcGet(ctx, odataUrl(`${targetOData}/${s}`, {
+                $filter: `Document_No eq '${q(docNo)}'`,
+              }));
+              if (lRes.value && lRes.value.length > 0) {
+                lines = parseBcLines(lRes.value, itmMap, accMap);
+                if (lines.length > 0) break;
+              }
+            } catch {}
+          }
         }
 
         // 2. Si no se encontró por OData, probar por API custom o API v2
