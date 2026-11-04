@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Reporting: exportación a PDF (imprimir → Guardar como PDF) */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  html, body { height: auto !important; overflow: visible !important; display: block !important; background: #fff !important; }
+  body > aside, aside { display: none !important; }
+  main { overflow: visible !important; }
+  .rpt-root { background: #fff !important; padding-bottom: 0 !important; }
+  .rpt-header { position: static !important; border: 0 !important; }
+  .rpt-noprint { display: none !important; }
+  .rpt-card, .rpt-section > div { break-inside: avoid; }
+  .rpt-section { break-before: page; }
+  .rpt-pagebreak { break-before: page; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
