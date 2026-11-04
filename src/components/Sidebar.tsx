@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, FileScan, LayoutDashboard, Settings, History, CheckCircle2, AlertCircle, Landmark } from 'lucide-react';
+import { Building2, FileScan, LayoutDashboard, Settings, History, CheckCircle2, AlertCircle, Landmark, ReceiptText } from 'lucide-react';
 import { useCompany } from '@/contexts/CompanyContext';
 
 export default function Sidebar() {
@@ -12,6 +12,7 @@ export default function Sidebar() {
   const menuItems = [
     { href: '/', label: 'Panel Principal', icon: LayoutDashboard },
     { href: '/ocr', label: 'OCR Facturas Compra', icon: FileScan },
+    { href: '/ocr-ventas', label: 'OCR Facturas Venta', icon: ReceiptText },
     { href: '/bancos', label: 'Extractos Bancarios', icon: Landmark },
     { href: '/audit', label: 'Registro de Actividad', icon: History },
     { href: '/settings', label: 'Conexión Business Central', icon: Settings },

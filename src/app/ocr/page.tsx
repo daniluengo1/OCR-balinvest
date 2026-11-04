@@ -1,7 +1,8 @@
 'use client';
 
 import { Fragment, useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff, FileText, Paperclip, Plus, RefreshCw, RotateCcw, ScanText, Search, Trash2, Upload, X } from 'lucide-react';
+import Link from 'next/link';
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff, FileText, Paperclip, Plus, RefreshCw, RotateCcw, ScanText, Search, ShoppingCart, Trash2, TrendingUp, Upload, X } from 'lucide-react';
 import DocPdfLink from '@/components/DocPdfLink';
 import { AccountCombobox, BcAccount } from '@/components/AccountCombobox';
 import { ItemCombobox } from '@/components/ItemCombobox';
@@ -346,12 +347,30 @@ export default function OcrPage() {
   return (
     <div className="min-h-screen bg-[#F3F4F7] pb-24">
       <main className="w-full px-3 sm:px-6 lg:px-8 pt-6 space-y-4 max-w-[1850px] mx-auto">
-        <header>
-          <h1 className="text-3xl font-black text-black tracking-tight flex items-center gap-2"><ScanText /> OCR</h1>
-          <p className="text-gray-500 mt-1 text-sm">
-            Sube facturas de proveedor en PDF: se reconoce el proveedor y se proponen la cabecera y las líneas igual que en sus últimas facturas registradas en BC ({selectedCompany}).
-            Revisa y crea cada una como Purchase Invoice sin registrar, con el PDF adjunto; regístrala (Post) en BC.
-          </p>
+        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-black tracking-tight flex items-center gap-2">
+              <ScanText /> OCR Facturas Compra
+              <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                Proveedores
+              </span>
+            </h1>
+            <p className="text-gray-500 mt-1 text-sm">
+              Sube facturas de proveedor en PDF: se reconoce el proveedor y se proponen la cabecera y las líneas igual que en sus últimas facturas registradas en BC ({selectedCompany}).
+              Revisa y crea cada una como Purchase Invoice sin registrar, con el PDF adjunto; regístrala (Post) en BC.
+            </p>
+          </div>
+          <div className="flex items-center bg-gray-200/80 p-1 rounded-xl text-xs font-semibold shrink-0">
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-indigo-900 shadow-sm border border-gray-200 font-bold">
+              <ShoppingCart size={14} className="text-indigo-600" /> Facturas Compra
+            </span>
+            <Link
+              href="/ocr-ventas"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <TrendingUp size={14} /> Facturas Venta
+            </Link>
+          </div>
         </header>
 
         {selectedCompany === 'ALL' ? (

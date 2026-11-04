@@ -310,7 +310,7 @@ const LINE_TYPE: Record<string, string> = {
   '': 'Comment'
 };
 
-const toLine = (l: any): OcrLine => ({
+export const toLine = (l: any): OcrLine => ({
   lineType: LINE_TYPE[l.type] ?? String(l.type || 'Item'),
   number: l.no || l.lineObjectNumber || '',
   description: l.description || '',
@@ -326,7 +326,7 @@ async function bcGet(ctx: BcContext, url: string) {
   return res.json();
 }
 
-async function accountNamesMap(ctx: BcContext): Promise<Map<string, string>> {
+export async function accountNamesMap(ctx: BcContext): Promise<Map<string, string>> {
   return cached(`ocr:account-names:${ctx.companyName}`, 6 * HOUR, async () => {
     try {
       const data = await bcFetchAll(odataUrl(`${ctx.apiBase}/accounts`, {
@@ -343,7 +343,7 @@ async function accountNamesMap(ctx: BcContext): Promise<Map<string, string>> {
   }).then(obj => new Map(Object.entries(obj)));
 }
 
-async function itemNamesMap(ctx: BcContext): Promise<Map<string, string>> {
+export async function itemNamesMap(ctx: BcContext): Promise<Map<string, string>> {
   return cached(`ocr:item-names:${ctx.companyName}`, 6 * HOUR, async () => {
     try {
       const data = await bcFetchAll(odataUrl(`${ctx.apiBase}/items`, {
@@ -733,7 +733,7 @@ function cleanInvoiceCandidate(raw: string): string {
   return s;
 }
 
-function guessHeader(t: string, filename?: string) {
+export function guessHeader(t: string, filename?: string) {
   let invoiceNo = '';
 
   // 1. Patrones específicos de abono / nota de crédito / rectificativa en 9 idiomas
@@ -896,7 +896,7 @@ function guessHeader(t: string, filename?: string) {
   return { invoiceNo, invoiceDate, dueDate };
 }
 
-function parseAmount(s: string): number | null {
+export function parseAmount(s: string): number | null {
   if (!s) return null;
   const isNeg = /[-–—]/.test(s);
   const clean = s.trim().replace(/[A-Za-z$€£]+/g, '').replace(/\s+/g, '');
@@ -921,9 +921,9 @@ function amounts(t: string): number[] {
 }
 
 const RATES = [0.21, 0.10, 0.04, 0.19, 0.07, 0.20, 0.22, 0.081, 0.077, 0.05, 0.16];
-const r2 = (v: number) => Math.round(v * 100) / 100;
+export const r2 = (v: number) => Math.round(v * 100) / 100;
 
-function totals(t: string) {
+export function totals(t: string) {
   const isReverseCharge = /odwrotna\s+op[łl]ata|omv[äa]nd\s+betalningsskyldighet|reverse\s+charge|inversi[óo]n\s+del\s+sujeto\s+pasivo|autoliquidation|steuerschuldnerschaft|verlegging|inversione\s+contabile|p[řr]enesen[íi]\s+da[nň]ov[eé]\s+povinnosti|art(?:[.]|\s+)(?:44|196)|2006\/112/iu.test(t);
   const isTaxFree = isReverseCharge || /tax ?free|steuerfrei|exento|no sujeto|exon[eé]r[eé]|esente\s+da\s+iva|vrijgesteld|zwolnion[ey]|osvobozeno|0[.,]00\s*%/iu.test(t);
 
