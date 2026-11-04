@@ -44,10 +44,19 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { tenantId, clientId, clientSecret, environment, companyId, testOnly } = body;
 
-    const current = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
-    const finalSecret = clientSecret ? clientSecret.trim() : current?.clientSecret || '';
+    let current: any = null;
+    try {
+      current = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
+    } catch (e: any) {
+      console.warn('Advertencia al consultar BD en bc-config:', e.message);
+    }
 
-    if (!tenantId || !clientId || !finalSecret) {
+    const effective = await getEffectiveBcConfig();
+    const finalTenant = (tenantId || current?.tenantId || effective.tenantId || '').trim();
+    const finalClient = (clientId || current?.clientId || effective.clientId || '').trim();
+    const finalSecret = clientSecret ? clientSecret.trim() : (current?.clientSecret || effective.clientSecret || '');
+
+    if (!finalTenant || !finalClient || !finalSecret) {
       return NextResponse.json({
         ok: false,
         error: 'Debes proporcionar Tenant ID, Client ID y Client Secret para conectar con Business Central.'
@@ -55,11 +64,11 @@ export async function POST(req: Request) {
     }
 
     // 1. Probar obtención de token OAuth en Microsoft Entra ID
-    const token = await getAccessToken(tenantId.trim(), clientId.trim(), finalSecret);
+    const token = await getAccessToken(finalTenant, finalClient, finalSecret);
 
     // 2. Probar acceso a la API de Business Central y listar empresas
-    const env = environment?.trim() || 'Production';
-    const root = `https://api.businesscentral.dynamics.com/v2.0/${tenantId.trim()}/${env}`;
+    const env = environment?.trim() || effective.environment || 'Production';
+    const root = `https://api.businesscentral.dynamics.com/v2.0/${finalTenant}/${env}`;
     const compRes = await fetch(`${root}/api/v2.0/companies`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       cache: 'no-store',
@@ -80,26 +89,30 @@ export async function POST(req: Request) {
       displayName: c.displayName || c.name,
     }));
 
-    // 3. Guardar en base de datos si no es solo test
+    // 3. Guardar en base de datos si no es solo test (con tolerancia a entornos serverless de solo lectura)
     if (!testOnly) {
-      await prisma.businessCentralConfig.upsert({
-        where: { id: 1 },
-        update: {
-          tenantId: tenantId.trim(),
-          clientId: clientId.trim(),
-          clientSecret: finalSecret,
-          environment: env,
-          companyId: companyId || (companies[0]?.name ?? ''),
-        },
-        create: {
-          id: 1,
-          tenantId: tenantId.trim(),
-          clientId: clientId.trim(),
-          clientSecret: finalSecret,
-          environment: env,
-          companyId: companyId || (companies[0]?.name ?? ''),
-        }
-      });
+      try {
+        await prisma.businessCentralConfig.upsert({
+          where: { id: 1 },
+          update: {
+            tenantId: finalTenant,
+            clientId: finalClient,
+            clientSecret: finalSecret,
+            environment: env,
+            companyId: companyId || (companies[0]?.name ?? ''),
+          },
+          create: {
+            id: 1,
+            tenantId: finalTenant,
+            clientId: finalClient,
+            clientSecret: finalSecret,
+            environment: env,
+            companyId: companyId || (companies[0]?.name ?? ''),
+          }
+        });
+      } catch (dbErr: any) {
+        console.warn('Aviso: no se pudo escribir en SQLite en entorno serverless (Vercel):', dbErr.message);
+      }
     }
 
     return NextResponse.json({

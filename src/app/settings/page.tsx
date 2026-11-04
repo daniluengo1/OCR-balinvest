@@ -23,8 +23,8 @@ import { useCompany } from '@/contexts/CompanyContext';
 
 export default function SettingsPage() {
   const { refreshCompanies } = useCompany();
-  const [tenantId, setTenantId] = useState('325946cd-5a64-466a-89b4-c7db382b75b6');
-  const [clientId, setClientId] = useState('');
+  const [tenantId, setTenantId] = useState('39ce8e6c-69fa-4426-951c-4eea455664f9');
+  const [clientId, setClientId] = useState('e83d177b-afea-448a-87ca-f665c3d9f651');
   const [clientSecret, setClientSecret] = useState('');
   const [environment, setEnvironment] = useState('Production');
   const [secretSet, setSecretSet] = useState(false);
