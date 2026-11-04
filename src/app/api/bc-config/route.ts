@@ -1,24 +1,12 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getAccessToken, getBcCompanies } from '@/lib/bcClient';
+import { getAccessToken, getBcCompanies, getEffectiveBcConfig } from '@/lib/bcClient';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    let config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
-    if (!config) {
-      config = await prisma.businessCentralConfig.create({
-        data: {
-          id: 1,
-          tenantId: '325946cd-5a64-466a-89b4-c7db382b75b6',
-          clientId: '',
-          clientSecret: '',
-          environment: 'Production',
-          companyId: '',
-        }
-      });
-    }
+    const config = await getEffectiveBcConfig();
 
     let companies: any[] = [];
     let connectionStatus = 'pending';

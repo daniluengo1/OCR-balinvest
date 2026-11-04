@@ -40,10 +40,28 @@ export async function getAccessToken(tenantId: string, clientId: string, clientS
   return data.access_token;
 }
 
+// Obtiene la configuración efectiva (prioridad a variables de entorno de Vercel/sistema, fallback a BD)
+export async function getEffectiveBcConfig() {
+  let config: any = null;
+  try {
+    config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
+  } catch (err) {
+    console.error('Error leyendo config de BC de la BD:', err);
+  }
+
+  const tenantId = process.env.BC_TENANT_ID || config?.tenantId || '';
+  const clientId = process.env.BC_CLIENT_ID || config?.clientId || '';
+  const clientSecret = process.env.BC_CLIENT_SECRET || config?.clientSecret || '';
+  const environment = process.env.BC_ENVIRONMENT || config?.environment || 'Production';
+  const companyId = process.env.BC_COMPANY_ID || config?.companyId || '';
+
+  return { tenantId, clientId, clientSecret, environment, companyId };
+}
+
 // Obtiene la lista de empresas registradas en Business Central
 export async function getBcCompanies(): Promise<Array<{ id: string; name: string; displayName: string }>> {
-  const config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
-  if (!config || !config.tenantId || !config.clientId || !config.clientSecret) {
+  const config = await getEffectiveBcConfig();
+  if (!config.tenantId || !config.clientId || !config.clientSecret) {
     return [];
   }
 
@@ -69,9 +87,9 @@ export async function getBcCompanies(): Promise<Array<{ id: string; name: string
 
 // Prepara token y URLs base de BC para la empresa seleccionada
 export async function getBcContext(companyName?: string): Promise<BcContext> {
-  const config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
-  if (!config || !config.tenantId || !config.clientId || !config.clientSecret) {
-    throw new Error('La configuración de Business Central está incompleta. Por favor, introduce el Client ID y Client Secret en Ajustes.');
+  const config = await getEffectiveBcConfig();
+  if (!config.tenantId || !config.clientId || !config.clientSecret) {
+    throw new Error('La configuración de Business Central está incompleta. Por favor, introduce el Client ID y Client Secret en Ajustes o Variables de Entorno.');
   }
 
   const token = await getAccessToken(config.tenantId, config.clientId, config.clientSecret);
