@@ -897,18 +897,19 @@ function totals(t: string) {
     }
   }
 
-  const numRe = String.raw`[-–—]?(?:[A-Z]{3}|[$€£])?\s*[-–—]?\s*[\d.,'\s]+?`;
+  const numRe = String.raw`[-–—]?(?:[A-Z]{3}|[$€£])?\s*[-–—]?\s*\d[\d.,'\s]*`;
 
-  // 1. Patrones explícitos de Total
+  // 1. Patrones explícitos de Total (en múltiples idiomas: ES, EN, IT, DE, FR, PL, SE)
   if (total == null) {
     const TOTAL_PATTERNS = [
-      new RegExp(String.raw`(?:nale[żz]na\s+kwota\s+faktury|suma\s+do\s+zap[łl]aty)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:f[öo]rfallna\s+fakturabelopp|totalt\s+belopp(?:\s*\(inkl[.]?\s*moms\))?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:importo\s+(?:della\s+fattura\s+)?dovuto|importo\s+totale(?:\s+dovuto)?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
       new RegExp(String.raw`(?:total\s+amount\s+due|invoice\s+amount\s+due|total\s+due|amount\s+due)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
       new RegExp(String.raw`(?:total\s+(?:factura|a\s+pagar|importe|documento))\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
       new RegExp(String.raw`(?:gesamtbetrag|endbetrag|rechnungsbetrag|zahlbetrag|gesamtsumme)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
       new RegExp(String.raw`(?:total\s+ttc|net\s+[àa]\s+payer)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`\b(?:total)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:nale[żz]na\s+kwota\s+faktury|suma\s+do\s+zap[łl]aty)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:f[öo]rfallna\s+fakturabelopp|totalt\s+belopp(?:\s*\(inkl[.]?\s*moms\))?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`\b(?:total|totale)\b\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
     ];
 
     for (const p of TOTAL_PATTERNS) {
@@ -923,8 +924,10 @@ function totals(t: string) {
   // 2. Patrones explícitos de IVA (buscado antes del neto para asegurar cuadre aritmético)
   if (vat == null) {
     const VAT_PATTERNS = [
-      new RegExp(String.raw`(?:vat\s*\(\s*21\s*%\s*\)[^:\d\n\r]*|tax\s+subtotal|vat\s*\(\s*0\s*%\s*\)|suma\s+cz[ęe][śs]ciowa\s+podatku|delsumma\s+f[öo]r\s+skatt)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:total\s+tax(?:\s+amount)?|cuota\s+iva|importe\s+iva|total\s+iva|vat\s+amount|mwst\.?|ust\.?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:subtotale\s+imposta|imposta\s+totale)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:vat\s*\(\s*\d+\s*%\s*\)(?:\s*-\s*[A-Z\s]+)?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:tax\s+subtotal|total\s+tax(?:\s+amount)?|cuota\s+iva|importe\s+iva|total\s+iva|vat\s+amount|mwst\.?|ust\.?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:suma\s+cz[ęe][śs]ciowa\s+podatku|delsumma\s+f[öo]r\s+skatt)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
     ];
 
     for (const p of VAT_PATTERNS) {
@@ -939,7 +942,7 @@ function totals(t: string) {
   // 3. Patrones explícitos de Subtotal / Base Imponible
   if (net == null) {
     const NET_PATTERNS = [
-      new RegExp(String.raw`(?:\bsubtotal\b|\bbase\s+imponible\b)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:\btotale\s+parziale\b|\bsubtotale\b|\bsubtotal\b|\bbase\s+imponible\b)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
       new RegExp(String.raw`(?:net\s+amount|taxable\s+amount|total\s+neto|subtotal\s+neto|importe\s+base)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
       new RegExp(String.raw`(?:preis\s*\(ohne\s+ust\.\)|ohne\s+ust\.|nettobetrag|zwischensumme)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
       new RegExp(String.raw`(?:suma\s+cz[ęe][śs]ciowa|delsumma)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
@@ -952,6 +955,12 @@ function totals(t: string) {
         if (net != null) break;
       }
     }
+  }
+
+  // Coherencia para operaciones con inversión de sujeto pasivo (Reverse charge / 0% IVA)
+  if ((isReverseCharge || isTaxFree) && (!vat || vat === 0)) {
+    if (total != null && net == null) net = total;
+    if (net != null && total == null) total = net;
   }
 
   // Coherencia aritmética estricta: Total = Neto + IVA (Subtotal + IVA = Total factura)
@@ -1051,6 +1060,11 @@ export function propose(
     else if (absVat === 0) defaultTaxCode = 'EXENTO';
   }
 
+  let effectiveNet = absNet;
+  if (effectiveNet == null && absTotal != null && (reverseChargeEffective || !absVat || absVat === 0)) {
+    effectiveNet = absTotal;
+  }
+
   const isAmazonAds = Boolean(
     (vendor && (/B87523825/i.test(vendor.vat || '') || /Amazon\s+Online/i.test(vendor.name || ''))) ||
     /ESB87523825|Amazon\s+Online\s+Spain|Amazon\s+Advertising/i.test(t)
@@ -1064,19 +1078,19 @@ export function propose(
       taxCode: l.taxCode && !l.taxCode.startsWith('472') ? l.taxCode : defaultTaxCode,
       vatAmount: reverseChargeEffective ? 0 : (l.vatAmount != null ? Math.abs(l.vatAmount) : 0),
     }));
-    if (absNet != null) {
+    if (effectiveNet != null) {
       if (lines.length === 1) {
         lines[0].quantity = 1;
-        lines[0].unitCost = absNet;
-        lines[0].vatAmount = reverseChargeEffective ? 0 : (absVat != null ? absVat : r2(absNet * 0.21));
+        lines[0].unitCost = effectiveNet;
+        lines[0].vatAmount = reverseChargeEffective ? 0 : (absVat != null ? absVat : r2(effectiveNet * 0.21));
       } else {
         const sum = lines.reduce((a, l) => a + Math.abs(l.quantity) * Math.abs(l.unitCost), 0) || 1;
         lines.forEach(l => {
           const qty = Math.abs(l.quantity) || 1;
           const prevCost = Math.abs(l.unitCost);
           l.quantity = qty;
-          l.unitCost = r2((absNet * (qty * prevCost)) / sum / qty);
-          l.vatAmount = reverseChargeEffective ? 0 : (absVat != null ? r2((absVat * (qty * l.unitCost)) / absNet) : r2(l.unitCost * 0.21));
+          l.unitCost = r2((effectiveNet * (qty * prevCost)) / sum / qty);
+          l.vatAmount = reverseChargeEffective ? 0 : (absVat != null ? r2((absVat * (qty * l.unitCost)) / effectiveNet) : r2(l.unitCost * 0.21));
         });
       }
     }
@@ -1088,9 +1102,9 @@ export function propose(
       description: 'Gasto según factura',
       description2: '',
       quantity: 1,
-      unitCost: absNet || 0,
+      unitCost: effectiveNet || 0,
       taxCode: defaultTaxCode,
-      vatAmount: reverseChargeEffective ? 0 : (absVat != null ? absVat : (absNet ? r2(absNet * 0.21) : 0)),
+      vatAmount: reverseChargeEffective ? 0 : (absVat != null ? absVat : (effectiveNet ? r2(effectiveNet * 0.21) : 0)),
     }];
   }
 
@@ -1103,9 +1117,9 @@ export function propose(
       description: 'PUBLICIDAD / ADS AMAZON',
       description2: '',
       quantity: 1,
-      unitCost: absNet || 0,
+      unitCost: effectiveNet || 0,
       taxCode: defaultTaxCode,
-      vatAmount: reverseChargeEffective ? 0 : (absVat != null ? absVat : (absNet ? r2(absNet * 0.21) : 0)),
+      vatAmount: reverseChargeEffective ? 0 : (absVat != null ? absVat : (effectiveNet ? r2(effectiveNet * 0.21) : 0)),
     }];
   }
 
@@ -1139,9 +1153,9 @@ export function propose(
       ? (documentType === 'credit_note' ? `Abono ${invoiceNo}` : `Factura ${invoiceNo}`)
       : (documentType === 'credit_note' ? 'Abono proveedor' : 'Factura proveedor'),
     currency,
-    net: absNet,
+    net: effectiveNet,
     vat: reverseChargeEffective ? 0 : absVat,
-    total: reverseChargeEffective ? absNet : (absTotal ?? (absNet != null && absVat != null ? r2(absNet + absVat) : null)),
+    total: reverseChargeEffective ? effectiveNet : (absTotal ?? (effectiveNet != null && absVat != null ? r2(effectiveNet + absVat) : null)),
     lines: lines.map(l => ({ ...l, quantity: Math.abs(l.quantity), unitCost: Math.abs(l.unitCost), vatAmount: l.vatAmount != null ? Math.abs(l.vatAmount) : undefined })),
     comment,
     isReverseCharge: reverseChargeEffective,
