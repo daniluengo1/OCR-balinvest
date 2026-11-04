@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start"
+    "start": "next start",
+    "deploy": "git add -A && git commit -m \"Actualización automática\" && git push"
   },
   "dependencies": {
     "@kenjiuno/msgreader": "1.28.0",
