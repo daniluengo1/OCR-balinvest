@@ -971,7 +971,7 @@ function totals(t: string) {
       new RegExp(wbStart + String.raw`(?:importe\s+(?:de\s+la\s+)?factura\s+debido|importe\s+total(?:\s+debido)?|total\s+(?:factura|a\s+pagar|importe|documento))` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       // Genérico internacional
       new RegExp(wbStart + String.raw`(?:f[öo]rfallna\s+fakturabelopp|totalt\s+belopp(?:\s*\(inkl[.]?\s*moms\))?)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
-      new RegExp(wbStart + String.raw`(?:total|totale|razem|celkem)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:total|totale|razem|celkem)(?!\s+(?:des\s+frais|cargos|tarifas|frais|delle|partiel|delle\s+regolatorie|regulatory|de\s+la\s+campagne|frais\s+publicitaires))` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
     ];
 
     for (const p of TOTAL_PATTERNS) {
@@ -986,7 +986,7 @@ function totals(t: string) {
   // 2. Patrones explícitos de IVA (buscado antes del neto para asegurar cuadre aritmético)
   if (vat == null) {
     const VAT_PATTERNS = [
-      new RegExp(wbStart + String.raw`(?:sous-total\s+taxe|subtotale\s+imposta|steuer-zwischensumme|suma\s+cz[ęe][śs]ciowa\s+podatku|mezisou[čc]et\s+dan[ěe]|tax\s+subtotal)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:sous[-–—\u2011\u00AD_\s]*total\s+taxe|subtotale\s+imposta|steuer-zwischensumme|suma\s+cz[ęe][śs]ciowa\s+podatku|mezisou[čc]et\s+dan[ěe]|tax\s+subtotal)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       new RegExp(wbStart + String.raw`(?:vat|tva|iva|mwst|ust|btw|dph)\s*\(\s*\d+(?:[.,]\d+)?\s*%\s*\)(?:\s*-\s*[A-Z\s]+)?` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       new RegExp(wbStart + String.raw`(?:total\s+tax(?:\s+amount)?|total\s+tva|total\s+iva|cuota\s+iva|importe\s+iva|vat\s+amount|mwst\.?|ust\.?|btw-bedrag|[čc][áa]stka\s+dph|podatek\s+vat)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
     ];
@@ -1000,23 +1000,23 @@ function totals(t: string) {
     }
   }
 
-  // 3. Patrones explícitos de Subtotal / Base Imponible
+  // 3. Patrones explícitos de Subtotal / Base Imponible (prioridad a Subtotal / Sous-total sobre líneas parciales)
   if (net == null) {
     const NET_PATTERNS = [
-      // Francés / Belga
-      new RegExp(wbStart + String.raw`(?:sous-total|sous\s+total|total\s+partiel|montant\s+ht|total\s+ht)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Francés / Belga (Sous-total con cualquier variante de guión o espacio)
+      new RegExp(wbStart + String.raw`(?:sous[-–—\u2011\u00AD_\s]*total|total\s+partiel|montant\s+ht|total\s+ht)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       // Italiano
-      new RegExp(wbStart + String.raw`(?:totale\s+parziale|subtotale|imponibile|base\s+imponibile)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:totale\s+parziale|sub[-–—\u2011\u00AD_\s]*totale|subtotale|imponibile|base\s+imponibile)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       // Alemán
-      new RegExp(wbStart + String.raw`(?:zwischensumme|nettobetrag|preis\s*\(ohne\s+ust\.\)|ohne\s+ust\.|ohne\s+mwst\.)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:zwischensumme|sub[-–—\u2011\u00AD_\s]*total|nettobetrag|preis\s*\(ohne\s+ust\.\)|ohne\s+ust\.|ohne\s+mwst\.)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       // Holandés / Belga
-      new RegExp(wbStart + String.raw`(?:subtotaal|netto\s+bedrag|bedrag\s+excl(?:usief)?\.?\s*btw)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:sub[-–—\u2011\u00AD_\s]*totaal|subtotaal|netto\s+bedrag|bedrag\s+excl(?:usief)?\.?\s*btw)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       // Polaco
       new RegExp(wbStart + String.raw`(?:suma\s+cz[ęe][śs]ciowa|warto[sś][ćc]\s+netto|razem\s+netto|podstawa\s+opodatkowania)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       // Checo
       new RegExp(wbStart + String.raw`(?:mezisou[čc]et|z[áa]klad\s+dan[ěe]|[čc][áa]stka\s+bez\s+dph|celkem\s+bez\s+dph)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
       // Inglés / Español / Genérico
-      new RegExp(wbStart + String.raw`(?:subtotal|base\s+imponible|net\s+amount|taxable\s+amount|total\s+neto|subtotal\s+neto|importe\s+base|delsumma)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:sub[-–—\u2011\u00AD_\s]*total|subtotal|base\s+imponible|net\s+amount|taxable\s+amount|total\s+neto|subtotal\s+neto|importe\s+base|delsumma)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
     ];
 
     for (const p of NET_PATTERNS) {
@@ -1137,8 +1137,8 @@ export function propose(
   }
 
   const isAmazonAds = Boolean(
-    (vendor && (/B87523825/i.test(vendor.vat || '') || /Amazon\s+Online/i.test(vendor.name || ''))) ||
-    /ESB87523825|Amazon\s+Online|Amazon\s+Advertising|Amazon\s+Europe|Amazon\s+EU\b/iu.test(t)
+    (vendor && (/B87523825/i.test(vendor.vat || '') || /Amazon\s+(?:Online|Advertising|Ads|Marketing|Europe|EU|Media)/i.test(vendor.name || ''))) ||
+    /ESB87523825|FR64790933329|IT09457730969|Amazon\s+Online|Amazon\s+Advertising|Amazon\s+Ads|Amazon\s+Europe|Amazon\s+EU\b/iu.test(t)
   );
 
   const model = history[0];
@@ -1179,13 +1179,17 @@ export function propose(
     }];
   }
 
-  // Prioridad para facturas de Amazon Ads / Amazon Online Spain:
-  // Balinvest registra la publicidad de Amazon como Artículo (Item) 1014
-  if (isAmazonAds && (!model || lines.every(l => l.lineType !== 'Item'))) {
+  // Prioridad para facturas de Amazon Ads en todos los países (España, Francia, Italia, Alemania, etc.):
+  // Balinvest registra la publicidad de Amazon como Artículo (Item) 1014 en UNA SOLA LÍNEA por el Subtotal / Sous-total completo.
+  // NUNCA debe desglosarse en cargos parciales ni coger la 2ª línea de tasas regulatorias.
+  if (isAmazonAds) {
+    const desc = (model?.lines?.[0]?.description && !/gasto/i.test(model.lines[0].description))
+      ? model.lines[0].description
+      : 'PUBLICIDAD / ADS AMAZON';
     lines = [{
       lineType: 'Item',
       number: '1014',
-      description: 'PUBLICIDAD / ADS AMAZON',
+      description: desc,
       description2: '',
       quantity: 1,
       unitCost: effectiveNet || 0,
