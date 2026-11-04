@@ -133,8 +133,8 @@ export function identifiers(text: string): string[] {
 
 export function detectCurrency(text: string): string {
   const count = (re: RegExp) => (text.match(re) || []).length;
-  // Prioridad 1: Etiqueta explícita de divisa ("Invoice Currency PLN", "Waluta faktury PLN", "Fakturavaluta SEK", etc.)
-  const explicit = text.match(/(?:invoice\s+currency|waluta\s+faktury|fakturavaluta|moneda(?:\s+de\s+la\s+factura)?|currency|divisa)\s*[:.]?\s*([A-Z]{3})\b/i);
+  // Prioridad 1: Etiqueta explícita de divisa en 9 idiomas (ES, FR, DE, EN, IT, NL, PL, CZ, BE)
+  const explicit = text.match(/(?:invoice\s+currency|waluta\s+faktury|fakturavaluta|moneda(?:\s+de\s+la\s+factura)?|currency|divisa|valuta(?:\s+della\s+fattura)?|devise(?:\s+de\s+facturation)?|w[äa]hrung|m[ěe]na)\s*[:.]?\s*([A-Z]{3})\b/iu);
   if (explicit) {
     const code = explicit[1].toUpperCase();
     if (['PLN', 'SEK', 'NOK', 'DKK', 'CHF', 'GBP', 'USD', 'EUR', 'CZK', 'HUF', 'RON', 'BGN', 'TRY', 'CAD', 'AUD', 'JPY'].includes(code)) {
@@ -655,11 +655,33 @@ export type Example = { number: string; text: string };
 const flat = (t: string) => t.replace(/\s+/g, ' ');
 
 const MONTHS: Record<string, string> = {
-  jan: '01', ene: '01', feb: '02', mar: '03', mär: '03', mae: '03', apr: '04', abr: '04', may: '05', mai: '05', jun: '06', jul: '07',
-  aug: '08', ago: '08', sep: '09', oct: '10', okt: '10', nov: '11', dec: '12', dez: '12', dic: '12',
+  // Enero / January / Janvier / Januar / Gennaio / Styczeń / Leden
+  jan: '01', ene: '01', gen: '01', sty: '01', led: '01',
+  // Febrero / February / Février / Februar / Febbraio / Luty / Únor
+  feb: '02', fév: '02', fev: '02', lut: '02', úno: '02', uno: '02',
+  // Marzo / March / Mars / März / Marzo / Marzec / Březen / Maart
+  mar: '03', mär: '03', mae: '03', maa: '03', mrt: '03', bře: '03', bre: '03',
+  // Abril / April / Avril / Aprile / Kwiecień / Duben
+  apr: '04', abr: '04', avr: '04', kwi: '04', dub: '04',
+  // Mayo / May / Mai / Maggio / Mei / Maj / Květen
+  may: '05', mai: '05', mag: '05', mei: '05', maj: '05', kvě: '05', kve: '05',
+  // Junio / June / Juin / Juni / Giugno / Czerwiec / Červen
+  jun: '06', jui: '06', giu: '06', cze: '06', čvn: '06', cvn: '06',
+  // Julio / July / Juillet / Juli / Luglio / Lipiec / Červenec
+  jul: '07', lug: '07', lip: '07', čvc: '07', cvc: '07',
+  // Agosto / August / Août / Agosto / Sierpień / Srpen
+  aug: '08', ago: '08', aoû: '08', aou: '08', sie: '08', srp: '08',
+  // Septiembre / September / Septembre / Settembre / Wrzesień / Září
+  sep: '09', set: '09', wrz: '09', zář: '09', zar: '09',
+  // Octubre / October / Octobre / Oktober / Ottobre / Październik / Říjen
+  oct: '10', okt: '10', ott: '10', paź: '10', paz: '10', říj: '10', rij: '10',
+  // Noviembre / November / Novembre / Listopad
+  nov: '11', lis: '11',
+  // Diciembre / December / Décembre / Dezember / Dicembre / Grudzień / Prosinec
+  dec: '12', dez: '12', dic: '12', déc: '12', gru: '12', pro: '12',
 };
 
-const DATE_RE = /\d{4}[-./]\d{2}[-./]\d{2}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4}|\d{1,2}[ -][A-Za-zäąćęłńóśźż]{3,9}\.?[ -]\d{2,4}|[A-Za-zäąćęłńóśźż]{3,9}\.? \d{1,2},? \d{4}/g;
+const DATE_RE = /\d{4}[-./]\d{2}[-./]\d{2}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4}|\d{1,2}[ -][A-Za-zÀ-ž]{3,9}\.?[ -]\d{2,4}|[A-Za-zÀ-ž]{3,9}\.? \d{1,2},? \d{4}/gu;
 
 function parseDate(s: string) {
   let m = s.match(/^(\d{4})[-./](\d{2})[-./](\d{2})$/);
@@ -682,9 +704,9 @@ function parseDate(s: string) {
       return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
   }
-  m = s.match(/^(\d{1,2})[ -]([A-Za-zäąćęłńóśźż]{3})[A-Za-zäąćęłńóśźż]*\.?[ -](\d{2,4})$/);
+  m = s.match(/^(\d{1,2})[ -]([A-Za-zÀ-ž]{3})[A-Za-zÀ-ž]*\.?[ -](\d{2,4})$/u);
   if (m && MONTHS[m[2].toLowerCase()]) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${MONTHS[m[2].toLowerCase()]}-${m[1].padStart(2, '0')}`;
-  m = s.match(/^([A-Za-zäąćęłńóśźż]{3})[A-Za-zäąćęłńóśźż]*\.? (\d{1,2}),? (\d{4})$/);
+  m = s.match(/^([A-Za-zÀ-ž]{3})[A-Za-zÀ-ž]*\.? (\d{1,2}),? (\d{4})$/u);
   if (m && MONTHS[m[1].toLowerCase()]) return `${m[3]}-${MONTHS[m[1].toLowerCase()]}-${m[2].padStart(2, '0')}`;
   return '';
 }
@@ -697,7 +719,9 @@ const STOP_WORDS = new Set([
   'periodo', 'servicio', 'invoice', 'date', 'amount', 'desde', 'hasta', 'referencia', 'nif', 'cif',
   'descripcion', 'cant', 'cantidad', 'precio', 'iva', 'neto', 'bruto', 'page', 'pagina',
   'original', 'copia', 'duplicado', 'rectificada', 'rectificativa', 'ausstellungsdatum',
-  'ursprüngliche', 'ursprungliche', 'zeitraum', 'leistungsempfänger', 'leistungserbringer'
+  'ursprüngliche', 'ursprungliche', 'zeitraum', 'leistungsempfänger', 'leistungserbringer',
+  'echeance', 'facturation', 'rechnung', 'rechnungsdatum', 'falligkeit', 'fattura', 'scadenza',
+  'factuur', 'vervaldatum', 'faktury', 'platnosc', 'splatnost', 'doklad'
 ]);
 
 function cleanInvoiceCandidate(raw: string): string {
@@ -712,14 +736,25 @@ function cleanInvoiceCandidate(raw: string): string {
 function guessHeader(t: string, filename?: string) {
   let invoiceNo = '';
 
-  // 1. Patrones específicos de abono / nota de crédito / rectificativa
+  // 1. Patrones específicos de abono / nota de crédito / rectificativa en 9 idiomas
   const creditNotePatterns = [
-    /(?:n[úu]mero\s+(?:de\s+)?(?:la\s+)?nota\s+de\s+cr[eé]dito|n[úu]mero\s+(?:de\s+)?abono|n[úu]mero\s+(?:de\s+)?factura\s+rectificativa|n[º°o]\.?\s+(?:de\s+)?(?:abono|nota\s+de\s+cr[eé]dito|rectificativa))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-    /(?:factura\s+rectificativa|f\.?\s*rectificativa|factura\s+abono)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-    /(?:gutschriftennummer|gutschriftsnummer|gutschrifts?-?nr\.?|gutschrifts?-?nummer)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-    /(?:credit\s+note\s+(?:number|no\.?|#)|credit\s+memo\s+(?:number|no\.?|#))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-    /(?:num[ée]ro\s+(?:de\s+(?:la\s+)?)?(?:note\s+de\s+cr[ée]dit|l['’]avoir|avoir))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-    /(?:numer\s+(?:faktury\s+koryguj[ąa]cej|korekty))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
+    // ES
+    /(?:n[úu]mero\s+(?:de\s+)?(?:la\s+)?nota\s+de\s+cr[eé]dito|n[úu]mero\s+(?:de\s+)?abono|n[úu]mero\s+(?:de\s+)?factura\s+rectificativa|n[º°o]\.?\s+(?:de\s+)?(?:abono|nota\s+de\s+cr[eé]dito|rectificativa))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    /(?:factura\s+rectificativa|f\.?\s*rectificativa|factura\s+abono)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    // DE
+    /(?:gutschriftennummer|gutschriftsnummer|gutschrifts?-?nr\.?|gutschrifts?-?nummer|korrekturnummer)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    // EN
+    /(?:credit\s+note\s+(?:number|no\.?|#)|credit\s+memo\s+(?:number|no\.?|#))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    // FR / BE
+    /(?:num[ée]ro\s+(?:de\s+(?:la\s+)?)?(?:note\s+de\s+cr[ée]dit|l['’]avoir|avoir)|facture\s+d['’]avoir\s+n[º°o]?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    // IT
+    /(?:numero\s+(?:della\s+)?nota\s+di\s+credito|nota\s+di\s+credito\s+n[º°o]?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    // NL / BE
+    /(?:creditnotanummer|creditnota\s+nr\.?|creditfactuurnummer)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    // PL
+    /(?:numer\s+(?:faktury\s+koryguj[ąa]cej|korekty))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+    // CZ
+    /(?:[čc][íi]slo\s+(?:opravn[eé]ho\s+da[nň]ov[eé]ho\s+dokladu|dobropisu)|dobropis\s+[čc]\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
   ];
   for (const re of creditNotePatterns) {
     const m = t.match(re);
@@ -741,19 +776,30 @@ function guessHeader(t: string, filename?: string) {
     }
   }
 
-  // 3. Patrones en español de alta precisión (con "Número" antes o después de "Factura")
+  // 3. Patrones de número de factura en los 9 idiomas
   if (!invoiceNo) {
-    const spanishPatterns = [
-      /(?<!original\s+|rectificada\s+)(?:n[úu]mero\s+(?:de\s+)?factura|n[º°o]\.?\s+(?:de\s+)?factura|n[úu]m\.?\s+(?:de\s+)?factura)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-      /(?<!original\s+|rectificada\s+)(?:factura\s+n[º°o]\.?|factura\s+n[úu]mero|factura\s+n[úu]m\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-      /(?<!original\s+|rectificada\s+)(?:factura\s*[:#]\s*)([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-      /(?:numer\s+faktury|fakturanummer)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-      /(?<!original\s+)(?:invoice\s+(?:number|no\.?|#)|inv\s*#)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-      /(?<!urspr[üu]ngliche\s+|original\s+)(?:rechnungs?nummer|belegnummer)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
-      /(?<!d['’]origine\s+)(?:facture\s+n[º°o]?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/i,
+    const invoicePatterns = [
+      // FR / BE
+      /(?<!d['’]origine\s+)(?:num[ée]ro\s+de\s+facture|n[º°o]\s+de\s+facture|facture\s+n[º°o]?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // IT
+      /(?:numero\s+(?:della\s+)?fattura|fattura\s+n[º°o]?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // ES
+      /(?<!original\s+|rectificada\s+)(?:n[úu]mero\s+(?:de\s+)?factura|n[º°o]\.?\s+(?:de\s+)?factura|n[úu]m\.?\s+(?:de\s+)?factura)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      /(?<!original\s+|rectificada\s+)(?:factura\s+n[º°o]\.?|factura\s+n[úu]mero|factura\s+n[úu]m\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      /(?<!original\s+|rectificada\s+)(?:factura\s*[:#]\s*)([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // DE
+      /(?<!urspr[üu]ngliche\s+|original\s+)(?:rechnungs?nummer|belegnummer|rechnung\s+nr\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // NL / BE
+      /(?:factuurnummer|factuur\s+nr\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // PL
+      /(?:numer\s+faktury|nr\s+faktury)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // CZ
+      /(?:[čc][íi]slo\s+faktury|faktura\s+[čc]\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // EN
+      /(?<!original\s+)(?:invoice\s+(?:number|no\.?|#)|inv\s*#)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
     ];
 
-    for (const re of spanishPatterns) {
+    for (const re of invoicePatterns) {
       const m = t.match(re);
       if (m) {
         const candidate = cleanInvoiceCandidate(m[1]);
@@ -767,7 +813,7 @@ function guessHeader(t: string, filename?: string) {
 
   // 4. Patrón genérico internacional (rechazando palabras reservadas y números originales)
   if (!invoiceNo) {
-    const genericMatch = t.match(/(?<!urspr[üu]ngliche\s+|original\s+|rectificada\s+)(?:Invoice|Rechnungs?|Debit Note|Credit Note|Gutschrift|Factura|Facture|Beleg|Faktury|Faktura)[ -]?(?:Number|No\.?|Nr\.?|nummer|n[º°o]\.?)\s*:?\s*([A-Z0-9][A-Z0-9\-\/.]{2,})/i);
+    const genericMatch = t.match(/(?<!urspr[üu]ngliche\s+|original\s+|rectificada\s+|d['’]origine\s+)(?:Invoice|Rechnungs?|Debit Note|Credit Note|Gutschrift|Factura|Facture|Fattura|Beleg|Faktury|Faktura|Factuur)[ -]?(?:Number|No\.?|Nr\.?|nummer|n[º°o]\.?|numero|num[ée]ro|[čc][íi]slo)\s*:?\s*([A-Z0-9][A-Z0-9\-\/.]{2,})/iu);
     if (genericMatch) {
       const candidate = cleanInvoiceCandidate(genericMatch[1]);
       if (candidate) invoiceNo = candidate;
@@ -802,18 +848,21 @@ function guessHeader(t: string, filename?: string) {
 
   let invoiceDate = '';
   const DATE_KEYWORDS = [
-    /(?:ausstellungsdatum(?:\s+der\s+gutschrift)?)\s*[:.]?\s*/i,
-    /(?:fecha(?:\s+de\s+emisi[óo]n)?\s+de\s+(?:la\s+)?(?:nota\s+de\s+cr[eé]dito|factura\s+rectificativa))\s*[:.]?\s*/i,
-    /(?:data\s+faktury|data\s+wystawienia)\s*[:.]?\s*/i,
-    /(?:fakturadatum|rechnungsdatum|belegdatum)\s*[:.]?\s*/i,
-    /(?:invoice\s+date|bill\s+date|doc(?:ument)?\s+date)\s*[:.]?\s*/i,
-    /(?:fecha\s+(?:de\s+)?(?:la\s+)?factura|fecha\s+emisi[óo]n|fecha\s+expedici[óo]n)\s*[:.]?\s*/i,
-    /(?:date\s+de\s+(?:la\s+)?facture|date\s+facture)\s*[:.]?\s*/i,
-    /(?:datum|date|fecha)\s*[:.]?\s*/i,
+    /(?:ausstellungsdatum(?:\s+der\s+gutschrift)?)\s*[:.]?\s*/iu,
+    /(?:fecha(?:\s+de\s+emisi[óo]n)?\s+de\s+(?:la\s+)?(?:nota\s+de\s+cr[eé]dito|factura\s+rectificativa))\s*[:.]?\s*/iu,
+    /(?:data\s+faktury|data\s+wystawienia)\s*[:.]?\s*/iu,
+    /(?:fakturadatum|rechnungsdatum|belegdatum)\s*[:.]?\s*/iu,
+    /(?:invoice\s+date|bill\s+date|doc(?:ument)?\s+date)\s*[:.]?\s*/iu,
+    /(?:fecha\s+(?:de\s+)?(?:la\s+)?factura|fecha\s+emisi[óo]n|fecha\s+expedici[óo]n)\s*[:.]?\s*/iu,
+    /(?:date\s+de\s+(?:la\s+)?facture|date\s+facture|date\s+de\s+facturation)\s*[:.]?\s*/iu,
+    /(?:data\s+(?:della\s+)?fattura|data\s+di\s+emissione)\s*[:.]?\s*/iu,
+    /(?:factuurdatum|datum\s+van\s+factuur)\s*[:.]?\s*/iu,
+    /(?:datum\s+vystaven[íi]|datum\s+fakturace|datum\s+zdaniteln[eé]ho\s+pln[eě]n[íi])\s*[:.]?\s*/iu,
+    /(?:datum|date|fecha|data)\s*[:.]?\s*/iu,
   ];
 
   for (const re of DATE_KEYWORDS) {
-    for (const m of t.matchAll(new RegExp(re, 'gi'))) {
+    for (const m of t.matchAll(new RegExp(re, 'giu'))) {
       const slice = t.slice(m.index! + m[0].length, m.index! + m[0].length + 60);
       const dm = dates(slice);
       const valid = dm.find(d => parseInt(d.iso.slice(0, 4), 10) >= 2020);
@@ -830,7 +879,7 @@ function guessHeader(t: string, filename?: string) {
 
   let dueDate = '';
   const DUE_KEYWORDS = [
-    /(?:termin\s+p[łl]atno[śs]ci|f[öo]rfallodatum|due\s+date|payment\s+due|fecha\s+(?:de\s+)?vencimiento|vencimiento|f[äa]lligkeitsdatum|date\s+d['’]?[eé]ch[eé]ance)\s*[:.]?\s*/i,
+    /(?:termin\s+p[łl]atno[śs]ci|f[öo]rfallodatum|due\s+date|payment\s+due|fecha\s+(?:de\s+)?vencimiento|vencimiento|f[äa]lligkeitsdatum|f[äa]llig\s+am|date\s+d['’]?[eé]ch[eé]ance|[eé]ch[eé]ance|scadenza|data\s+di\s+scadenza|vervaldatum|datum\s+splatnosti|splatnost)\s*[:.]?\s*/iu,
   ];
   for (const re of DUE_KEYWORDS) {
     const m = t.match(re);
@@ -875,8 +924,8 @@ const RATES = [0.21, 0.10, 0.04, 0.19, 0.07, 0.20, 0.22, 0.081, 0.077, 0.05, 0.1
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 function totals(t: string) {
-  const isReverseCharge = /odwrotna\s+op[łl]ata|omv[äa]nd\s+betalningsskyldighet|reverse\s+charge|inversi[óo]n\s+del\s+sujeto\s+pasivo|art(?:[.]|\s+)(?:44|196)|2006\/112/i.test(t);
-  const isTaxFree = isReverseCharge || /tax ?free|steuerfrei|exento|no sujeto|0[.,]00\s*%/i.test(t);
+  const isReverseCharge = /odwrotna\s+op[łl]ata|omv[äa]nd\s+betalningsskyldighet|reverse\s+charge|inversi[óo]n\s+del\s+sujeto\s+pasivo|autoliquidation|steuerschuldnerschaft|verlegging|inversione\s+contabile|p[řr]enesen[íi]\s+da[nň]ov[eé]\s+povinnosti|art(?:[.]|\s+)(?:44|196)|2006\/112/iu.test(t);
+  const isTaxFree = isReverseCharge || /tax ?free|steuerfrei|exento|no sujeto|exon[eé]r[eé]|esente\s+da\s+iva|vrijgesteld|zwolnion[ey]|osvobozeno|0[.,]00\s*%/iu.test(t);
 
   let total: number | null = null;
   let net: number | null = null;
@@ -898,18 +947,31 @@ function totals(t: string) {
   }
 
   const numRe = String.raw`[-–—]?(?:[A-Z]{3}|[$€£])?\s*[-–—]?\s*\d[\d.,'\s]*`;
+  const wbStart = String.raw`(?<![\p{L}\p{N}])`;
+  const wbEnd = String.raw`(?![\p{L}\p{N}])`;
 
-  // 1. Patrones explícitos de Total (en múltiples idiomas: ES, EN, IT, DE, FR, PL, SE)
+  // 1. Patrones explícitos de Total (en los 9 idiomas: ES, FR, DE, EN, IT, NL, PL, CZ, BE)
   if (total == null) {
     const TOTAL_PATTERNS = [
-      new RegExp(String.raw`(?:importo\s+(?:della\s+fattura\s+)?dovuto|importo\s+totale(?:\s+dovuto)?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:total\s+amount\s+due|invoice\s+amount\s+due|total\s+due|amount\s+due)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:total\s+(?:factura|a\s+pagar|importe|documento))\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:gesamtbetrag|endbetrag|rechnungsbetrag|zahlbetrag|gesamtsumme)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:total\s+ttc|net\s+[àa]\s+payer)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:nale[żz]na\s+kwota\s+faktury|suma\s+do\s+zap[łl]aty)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:f[öo]rfallna\s+fakturabelopp|totalt\s+belopp(?:\s*\(inkl[.]?\s*moms\))?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`\b(?:total|totale)\b\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      // Francés / Belga (Wallon)
+      new RegExp(wbStart + String.raw`(?:montant\s+(?:de\s+la\s+facture\s+)?d[ûu]|montant\s+total(?:\s+d[ûu])?|total\s+d[ûu]|total\s+ttc|net\s+[àa]\s+payer)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Italiano
+      new RegExp(wbStart + String.raw`(?:importo\s+(?:della\s+fattura\s+)?dovuto|importo\s+totale(?:\s+dovuto)?|totale\s+dovuto|totale\s+fattura)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Alemán
+      new RegExp(wbStart + String.raw`(?:f[äa]lliger\s+rechnungsbetrag|rechnungsbetrag(?:\s+f[äa]llig)?|gesamtbetrag|endbetrag|rechnungsbetrag|zahlbetrag|gesamtsumme|zu\s+zahlender\s+betrag)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Holandés / Belga (Vlaams)
+      new RegExp(wbStart + String.raw`(?:factuurbedrag\s+verschuldigd|totaal\s+verschuldigd(?:\s+bedrag)?|verschuldigd\s+bedrag|totaal\s+te\s+betalen|totaalbedrag|eindbedrag|totaal\s+incl(?:usief)?\.?\s*btw)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Polaco
+      new RegExp(wbStart + String.raw`(?:nale[żz]na\s+kwota\s+faktury|suma\s+do\s+zap[łl]aty|razem\s+do\s+zap[łl]aty|kwota\s+do\s+zap[łl]aty|warto[sś][ćc]\s+brutto|razem\s+brutto|og[óo][łl]em)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Checo
+      new RegExp(wbStart + String.raw`(?:[čc][áa]stka\s+faktury\s+k\s+[úu]hrad[ěe]|celkov[áa]\s+[čc][áa]stka(?:\s+k\s+[úu]hrad[ěe])?|celkem\s+k\s+[úu]hrad[ěe]|k\s+[úu]hrad[ěe]|celkem\s+s\s+dph|[čc][áa]stka\s+k\s+zaplacen[íi])` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Inglés
+      new RegExp(wbStart + String.raw`(?:total\s+amount\s+due|invoice\s+amount\s+due|total\s+due|amount\s+due|total\s+payable|balance\s+due|grand\s+total)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Español
+      new RegExp(wbStart + String.raw`(?:importe\s+(?:de\s+la\s+)?factura\s+debido|importe\s+total(?:\s+debido)?|total\s+(?:factura|a\s+pagar|importe|documento))` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Genérico internacional
+      new RegExp(wbStart + String.raw`(?:f[öo]rfallna\s+fakturabelopp|totalt\s+belopp(?:\s*\(inkl[.]?\s*moms\))?)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:total|totale|razem|celkem)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
     ];
 
     for (const p of TOTAL_PATTERNS) {
@@ -924,10 +986,9 @@ function totals(t: string) {
   // 2. Patrones explícitos de IVA (buscado antes del neto para asegurar cuadre aritmético)
   if (vat == null) {
     const VAT_PATTERNS = [
-      new RegExp(String.raw`(?:subtotale\s+imposta|imposta\s+totale)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:vat\s*\(\s*\d+\s*%\s*\)(?:\s*-\s*[A-Z\s]+)?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:tax\s+subtotal|total\s+tax(?:\s+amount)?|cuota\s+iva|importe\s+iva|total\s+iva|vat\s+amount|mwst\.?|ust\.?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:suma\s+cz[ęe][śs]ciowa\s+podatku|delsumma\s+f[öo]r\s+skatt)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(wbStart + String.raw`(?:sous-total\s+taxe|subtotale\s+imposta|steuer-zwischensumme|suma\s+cz[ęe][śs]ciowa\s+podatku|mezisou[čc]et\s+dan[ěe]|tax\s+subtotal)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:vat|tva|iva|mwst|ust|btw|dph)\s*\(\s*\d+(?:[.,]\d+)?\s*%\s*\)(?:\s*-\s*[A-Z\s]+)?` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      new RegExp(wbStart + String.raw`(?:total\s+tax(?:\s+amount)?|total\s+tva|total\s+iva|cuota\s+iva|importe\s+iva|vat\s+amount|mwst\.?|ust\.?|btw-bedrag|[čc][áa]stka\s+dph|podatek\s+vat)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
     ];
 
     for (const p of VAT_PATTERNS) {
@@ -942,10 +1003,20 @@ function totals(t: string) {
   // 3. Patrones explícitos de Subtotal / Base Imponible
   if (net == null) {
     const NET_PATTERNS = [
-      new RegExp(String.raw`(?:\btotale\s+parziale\b|\bsubtotale\b|\bsubtotal\b|\bbase\s+imponible\b)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:net\s+amount|taxable\s+amount|total\s+neto|subtotal\s+neto|importe\s+base)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:preis\s*\(ohne\s+ust\.\)|ohne\s+ust\.|nettobetrag|zwischensumme)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:suma\s+cz[ęe][śs]ciowa|delsumma)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      // Francés / Belga
+      new RegExp(wbStart + String.raw`(?:sous-total|sous\s+total|total\s+partiel|montant\s+ht|total\s+ht)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Italiano
+      new RegExp(wbStart + String.raw`(?:totale\s+parziale|subtotale|imponibile|base\s+imponibile)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Alemán
+      new RegExp(wbStart + String.raw`(?:zwischensumme|nettobetrag|preis\s*\(ohne\s+ust\.\)|ohne\s+ust\.|ohne\s+mwst\.)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Holandés / Belga
+      new RegExp(wbStart + String.raw`(?:subtotaal|netto\s+bedrag|bedrag\s+excl(?:usief)?\.?\s*btw)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Polaco
+      new RegExp(wbStart + String.raw`(?:suma\s+cz[ęe][śs]ciowa|warto[sś][ćc]\s+netto|razem\s+netto|podstawa\s+opodatkowania)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Checo
+      new RegExp(wbStart + String.raw`(?:mezisou[čc]et|z[áa]klad\s+dan[ěe]|[čc][áa]stka\s+bez\s+dph|celkem\s+bez\s+dph)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
+      // Inglés / Español / Genérico
+      new RegExp(wbStart + String.raw`(?:subtotal|base\s+imponible|net\s+amount|taxable\s+amount|total\s+neto|subtotal\s+neto|importe\s+base|delsumma)` + wbEnd + String.raw`\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|CZK|[a-z]{3}|[$€£]|\s|$)`, 'iu'),
     ];
 
     for (const p of NET_PATTERNS) {
@@ -1067,7 +1138,7 @@ export function propose(
 
   const isAmazonAds = Boolean(
     (vendor && (/B87523825/i.test(vendor.vat || '') || /Amazon\s+Online/i.test(vendor.name || ''))) ||
-    /ESB87523825|Amazon\s+Online\s+Spain|Amazon\s+Advertising/i.test(t)
+    /ESB87523825|Amazon\s+Online|Amazon\s+Advertising|Amazon\s+Europe|Amazon\s+EU\b/iu.test(t)
   );
 
   const model = history[0];
@@ -1136,9 +1207,9 @@ export function propose(
     comment = 'Nuevo documento sin histórico previo.';
   }
 
-  const isCreditNote = /\b(abono\s+de\s+factura|factura\s+rectificativa|rectificativa|credit\s+note|credit\s+memo|nota\s+de\s+cr[eé]dito|nota\s+de\s+abono|gutschrift|avoir)\b/i.test(t.slice(0, 2500))
-    || (/\b(abono)\b/i.test(t.slice(0, 2500)) && !/\b(factura(?!\s+rectificativa))\b/i.test(t.slice(0, 400)))
-    || (Boolean(filename) && /\babono\b/i.test(filename || ''))
+  const isCreditNote = /\b(abono\s+de\s+factura|factura\s+rectificativa|rectificativa|credit\s+note|credit\s+memo|nota\s+de\s+cr[eé]dito|nota\s+de\s+abono|gutschrift|avoir|nota\s+di\s+credito|creditnota|faktura\s+koryguj[ąa]ca|korekta|opravn[yý]\s+da[nň]ov[yý]\s+doklad|dobropis)\b/iu.test(t.slice(0, 2500))
+    || (/\b(abono|avoir|dobropis|gutschrift|creditnota|korekta)\b/iu.test(t.slice(0, 2500)) && !/\b(factura(?!\s+rectificativa)|facture(?!\s+d['’]avoir)|rechnung(?!\s+gutschrift))\b/iu.test(t.slice(0, 400)))
+    || (Boolean(filename) && /\b(abono|credit|gutschrift|avoir|dobropis|creditnota|korekta)\b/iu.test(filename || ''))
     || (total != null && total < 0)
     || (net != null && net < 0);
   const documentType = isCreditNote ? 'credit_note' : 'invoice';
