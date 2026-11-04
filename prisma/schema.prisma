@@ -32,3 +32,42 @@ model ActionLog {
   details   String?
   companyId String?
 }
+
+model CashflowConfig {
+  id             Int      @id @default(autoincrement())
+  companyId      String   @default("")
+  currencyCode   String   @default("EUR")
+  initialBalance Float    @default(0)
+  updatedAt      DateTime @default(now()) @updatedAt
+  
+  @@unique([companyId, currencyCode])
+}
+
+model CashflowManualEntry {
+  id           Int      @id @default(autoincrement())
+  companyId    String   @default("")
+  currencyCode String   @default("EUR")
+  date         DateTime
+  description  String
+  amount       Float
+  balance      Float?
+  isArchived   Boolean  @default(false)
+  bankAccount  String?
+  sourceFile   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model BankStatementImport {
+  id             Int      @id @default(autoincrement())
+  companyId      String   @default("")
+  filename       String
+  bankAccount    String?
+  currencyCode   String   @default("EUR")
+  importDate     DateTime @default(now())
+  totalRows      Int      @default(0)
+  totalIncome    Float    @default(0)
+  totalExpense   Float    @default(0)
+  initialBalance Float?
+  finalBalance   Float?
+}

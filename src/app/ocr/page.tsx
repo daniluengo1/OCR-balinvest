@@ -345,7 +345,7 @@ export default function OcrPage() {
 
   return (
     <div className="min-h-screen bg-[#F3F4F7] pb-24">
-      <main className="w-full px-4 md:px-8 pt-6 space-y-4">
+      <main className="w-full px-3 sm:px-6 lg:px-8 pt-6 space-y-4 max-w-[1850px] mx-auto">
         <header>
           <h1 className="text-3xl font-black text-black tracking-tight flex items-center gap-2"><ScanText /> OCR</h1>
           <p className="text-gray-500 mt-1 text-sm">
@@ -480,69 +480,83 @@ function DocCard({ d, f, fileObj, attachments, accounts, loadingAccounts, items,
   const isCredit = f?.documentType === 'credit_note';
 
   const head = (
-    <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 border-b transition-colors ${
+    <div className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 border-b transition-colors ${
       isCredit ? 'bg-emerald-100/70 border-emerald-300' : 'bg-white border-gray-200'
     }`}>
-      {!d.loading && !d.error && d.vendor && !st.created && <input type="checkbox" checked={selected} onChange={onToggle} title="Marcar para enviar junto con las demás" />}
-      <div className="flex items-center gap-1.5">
-        {isCredit ? <RotateCcw size={16} className="text-emerald-700" /> : <FileText size={16} className="text-indigo-600" />}
-        <span className="font-bold text-gray-900">{d.vendor ? `${d.vendor.number} · ${d.vendor.name}` : 'Proveedor sin reconocer'}</span>
+      <div className="flex flex-wrap items-center gap-2.5">
+        {!d.loading && !d.error && d.vendor && !st.created && (
+          <input type="checkbox" checked={selected} onChange={onToggle} title="Marcar para enviar junto con las demás" className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+        )}
+        <div className="flex items-center gap-1.5">
+          {isCredit ? <RotateCcw size={16} className="text-emerald-700" /> : <FileText size={16} className="text-indigo-600" />}
+          <span className="font-bold text-gray-900 text-sm">{d.vendor ? `${d.vendor.number} · ${d.vendor.name}` : 'Proveedor sin reconocer'}</span>
+        </div>
+
+        {/* Selector de Tipo: Factura vs Abono */}
+        {f && (
+          <div className="flex items-center gap-1.5">
+            <select
+              value={f.documentType}
+              onChange={e => setField('documentType', e.target.value)}
+              className={`text-xs font-bold rounded-lg px-2.5 py-1 border transition-colors ${
+                isCredit
+                  ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
+                  : 'bg-gray-50 text-gray-800 border-gray-300'
+              }`}
+            >
+              <option value="invoice" className="bg-white text-gray-800">📄 Factura de compra</option>
+              <option value="credit_note" className="bg-white text-gray-800">↩️ Abono / Rectificativa</option>
+            </select>
+            {isCredit && (
+              <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-600 text-white border border-emerald-700 shadow-xs flex items-center gap-1">
+                <RotateCcw size={12} /> ABONO
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Botones de Previsualización del PDF */}
+        {previewUrl && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowPreview(!showPreview)}
+              className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all ${
+                showPreview
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+              }`}
+              title={showPreview ? 'Ocultar previsualización del PDF' : 'Previsualizar el PDF lateralmente para validar la información'}
+            >
+              {showPreview ? <EyeOff size={13} /> : <Eye size={13} />}
+              <span>{showPreview ? 'Ocultar PDF' : 'Ver PDF'}</span>
+            </button>
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-indigo-600 bg-white hover:bg-indigo-50 border border-gray-300 hover:border-indigo-300 px-2 py-1 rounded-lg"
+              title="Abrir PDF en pestaña nueva"
+            >
+              <ExternalLink size={12} />
+            </a>
+          </div>
+        )}
       </div>
 
-      {/* Selector de Tipo: Factura vs Abono */}
-      {f && (
-        <div className="flex items-center gap-1.5">
-          <select
-            value={f.documentType}
-            onChange={e => setField('documentType', e.target.value)}
-            className={`text-xs font-bold rounded-lg px-2.5 py-1 border transition-colors ${
-              isCredit
-                ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
-                : 'bg-gray-50 text-gray-800 border-gray-300'
-            }`}
-          >
-            <option value="invoice" className="bg-white text-gray-800">📄 Factura de compra</option>
-            <option value="credit_note" className="bg-white text-gray-800">↩️ Abono / Rectificativa</option>
-          </select>
-          {isCredit && (
-            <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-600 text-white border border-emerald-700 shadow-xs flex items-center gap-1">
-              <RotateCcw size={12} /> ABONO
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Botones de Previsualización del PDF */}
-      {previewUrl && (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setShowPreview(!showPreview)}
-            className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all ${
-              showPreview
-                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-            }`}
-            title={showPreview ? 'Ocultar previsualización del PDF' : 'Previsualizar el PDF original para validar la información'}
-          >
-            {showPreview ? <EyeOff size={13} /> : <Eye size={13} />}
-            <span>{showPreview ? 'Ocultar PDF' : 'Ver PDF'}</span>
-          </button>
-          <a
-            href={previewUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-indigo-600 bg-white hover:bg-indigo-50 border border-gray-300 hover:border-indigo-300 px-2 py-1 rounded-lg"
-            title="Abrir PDF en pestaña nueva"
-          >
-            <ExternalLink size={12} />
-          </a>
-        </div>
-      )}
-
-      <span className="text-xs text-gray-500">{d.file}{d.scanned ? ' · escaneado (sin texto)' : ''}</span>
-      {s && <span className="ml-auto text-sm text-gray-600">PDF: neto <b>{fmt(s.net)}</b> · IVA {fmt(s.vat)} · total <b>{fmt(s.total)} {s.currency || d.currency}</b></span>}
-      <button onClick={onRemove} title="Quitar de la lista (no se envía a BC)" className={`${s ? '' : 'ml-auto '}p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50`}><X size={16} /></button>
+      <div className="flex items-center gap-2.5 text-xs ml-auto">
+        <span className="text-gray-500 font-mono text-[11px] max-w-[200px] truncate" title={d.file}>
+          {d.file}{d.scanned ? ' · escaneado' : ''}
+        </span>
+        {s && (
+          <span className="text-gray-700 bg-gray-50 border border-gray-200 px-2 py-1 rounded-md text-xs whitespace-nowrap">
+            PDF: neto <b>{fmt(s.net)}</b> · IVA {fmt(s.vat)} · total <b className="text-gray-900">{fmt(s.total)} {s.currency || d.currency}</b>
+          </span>
+        )}
+        <button onClick={onRemove} title="Quitar de la lista (no se envía a BC)" className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50">
+          <X size={16} />
+        </button>
+      </div>
     </div>
   );
   if (d.loading) return <section className="bg-white border border-gray-200 rounded-xl shadow-sm">{head}<p className="p-4 text-sm text-gray-500 flex items-center gap-2"><RefreshCw size={14} className="animate-spin" /> Leyendo el PDF…</p></section>;
@@ -573,10 +587,10 @@ function DocCard({ d, f, fileObj, attachments, accounts, loadingAccounts, items,
         : 'bg-white border border-gray-200 shadow-sm'
     }`}>
       {head}
-      <div className={`p-4 ${showPreview ? '2xl:grid 2xl:grid-cols-12 2xl:gap-6 2xl:space-y-0 space-y-4' : 'space-y-3'}`}>
-        {/* Visor PDF embebido si se activa */}
+      <div className={`p-4 ${showPreview ? 'lg:grid lg:grid-cols-12 lg:gap-5 lg:space-y-0 space-y-4' : 'space-y-3'}`}>
+        {/* Visor PDF lateral embebido para validar simultáneamente */}
         {showPreview && previewUrl && (
-          <div className="2xl:col-span-5 border border-gray-300 rounded-xl overflow-hidden bg-gray-100 flex flex-col shadow-inner sticky top-4" style={{ height: '740px' }}>
+          <div className="lg:col-span-5 border border-gray-300 rounded-xl overflow-hidden bg-gray-100 flex flex-col shadow-inner sticky top-4 h-[680px] lg:h-[760px]">
             <div className="px-3 py-2 bg-gray-200/90 border-b border-gray-300 flex items-center justify-between text-xs text-gray-700">
               <span className="font-semibold truncate flex items-center gap-1.5" title={d.file}>
                 <FileText size={13} className="text-gray-500 shrink-0" />
@@ -599,7 +613,7 @@ function DocCard({ d, f, fileObj, attachments, accounts, loadingAccounts, items,
           </div>
         )}
 
-        <div className={`${showPreview ? '2xl:col-span-7' : 'w-full'} space-y-3`}>
+        <div className={`${showPreview ? 'lg:col-span-7 min-w-0' : 'w-full'} space-y-3`}>
           {/* Banner destacado para Abonos */}
           {isCredit && (
             <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-950 text-xs shadow-xs">
@@ -618,14 +632,14 @@ function DocCard({ d, f, fileObj, attachments, accounts, loadingAccounts, items,
           )}
 
           <VendorPicker d={d} onVendor={onVendor} />
-          <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-wrap gap-2.5 items-end">
             <label className="text-xs font-semibold text-gray-500">
               {isCredit ? 'Nº abono / rectificativa (Vendor Cr. Memo No.)' : 'Nº factura proveedor (Vendor Invoice No.)'}
-              <input value={f.invoiceNo} onChange={e => setField('invoiceNo', e.target.value)} className={`${input} block mt-1 w-64 font-mono`} />
+              <input value={f.invoiceNo} onChange={e => setField('invoiceNo', e.target.value)} className={`${input} block mt-1 w-56 font-mono text-xs`} />
             </label>
             <label className="text-xs font-semibold text-gray-500">
               {isCredit ? 'Fecha abono' : 'Fecha factura'}
-              <input type="date" value={f.invoiceDate} onChange={e => setField('invoiceDate', e.target.value)} className={`${input} block mt-1`} />
+              <input type="date" value={f.invoiceDate} onChange={e => setField('invoiceDate', e.target.value)} className={`${input} block mt-1 text-xs`} />
             </label>
             <label className="text-xs font-semibold text-gray-500">
               <span className="flex items-center gap-1.5">
@@ -639,144 +653,149 @@ function DocCard({ d, f, fileObj, attachments, accounts, loadingAccounts, items,
                   </span>
                 )}
               </span>
-              <input type="date" value={f.postingDate} onChange={e => setField('postingDate', e.target.value)} className={`${input} block mt-1`} />
+              <input type="date" value={f.postingDate} onChange={e => setField('postingDate', e.target.value)} className={`${input} block mt-1 text-xs`} />
             </label>
-            <label className="text-xs font-semibold text-gray-500">Vencimiento <span className="font-normal">(vacío: según términos de pago)</span>
-              <input type="date" value={f.dueDate} onChange={e => setField('dueDate', e.target.value)} className={`${input} block mt-1`} />
+            <label className="text-xs font-semibold text-gray-500">
+              Vencimiento <span className="font-normal text-gray-400">(vacío: según términos)</span>
+              <input type="date" value={f.dueDate} onChange={e => setField('dueDate', e.target.value)} className={`${input} block mt-1 text-xs`} />
             </label>
-            <label className="text-xs font-semibold text-gray-500 flex-1 min-w-[260px]">Posting Description
-              <input value={f.postingDescription} maxLength={100} onChange={e => setField('postingDescription', e.target.value)} className={`${input} block mt-1 w-full`} />
+            <label className="text-xs font-semibold text-gray-500 flex-1 min-w-[200px]">
+              Posting Description
+              <input value={f.postingDescription} maxLength={100} onChange={e => setField('postingDescription', e.target.value)} className={`${input} block mt-1 w-full text-xs`} />
             </label>
           </div>
 
-        <table className="w-full text-sm">
-          <thead className="text-xs uppercase tracking-wider text-gray-500 bg-gray-50">
-            <tr>
-              <th className="p-2 text-left">Tipo</th>
-              <th className="p-2 text-left">Nº</th>
-              <th className="p-2 text-left">Descripción</th>
-              <th className="p-2 text-left">Description 2</th>
-              <th className="p-2 text-right">Cantidad</th>
-              <th className="p-2 text-right">Coste unit. ({s?.currency || d.currency || d.vendor?.currency || 'EUR'})</th>
-              <th className="p-2 text-right">Neto línea</th>
-              <th className="p-2 text-left">
-                Grupo IVA
-                {s?.isReverseCharge && (
-                  <span className="ml-1 inline-block text-[10px] normal-case text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-0.5 rounded font-normal">
-                    Revertido (0%)
-                  </span>
-                )}
-              </th>
-              <th className="p-2 text-right">Importe IVA</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {f.lines.map((l, i) => (
-              <tr key={i} className="border-t border-gray-100">
-                <td className="p-1"><select value={l.lineType} onChange={e => setLine(i, 'lineType', e.target.value)} className={input}>{LINE_TYPES.map(t => <option key={t}>{t}</option>)}</select></td>
-                <td className="p-1">
-                  {l.lineType === 'Account' ? (
-                    <AccountCombobox
-                      value={l.number}
-                      accounts={accounts}
-                      loading={loadingAccounts}
-                      disabled={false}
-                      onChange={(num, name, vatProdGroup) => {
-                        setLine(i, 'number', num);
-                        if (name) {
-                          setLine(i, 'description', name);
-                        }
-                        const effectiveVat = vatProdGroup || l.taxCode || 'IVA21';
-                        setLine(i, 'taxCode', effectiveVat);
-                        updateVat(i, l.quantity, l.unitCost, effectiveVat);
-                      }}
-                    />
-                  ) : l.lineType === 'Item' ? (
-                    <ItemCombobox
-                      value={l.number}
-                      items={items}
-                      loading={loadingItems}
-                      disabled={false}
-                      onChange={(num, name, taxGroup) => {
-                        setLine(i, 'number', num);
-                        if (name) {
-                          setLine(i, 'description', name);
-                        }
-                        const effectiveVat = taxGroup || l.taxCode || 'IVA21';
-                        setLine(i, 'taxCode', effectiveVat);
-                        updateVat(i, l.quantity, l.unitCost, effectiveVat);
-                      }}
-                    />
-                  ) : (
-                    <input
-                      value={l.number}
-                      onChange={e => setLine(i, 'number', e.target.value)}
-                      disabled={l.lineType === 'Comment'}
-                      placeholder={l.lineType === 'Comment' ? '' : 'Nº'}
-                      className={`${input} w-28 font-mono ${!l.number && l.lineType !== 'Comment' ? 'border-red-400' : ''}`}
-                    />
-                  )}
-                </td>
-                <td className="p-1"><input value={l.description} maxLength={100} onChange={e => setLine(i, 'description', e.target.value)} className={`${input} w-full min-w-[220px]`} /></td>
-                <td className="p-1"><input value={l.description2} maxLength={50} onChange={e => setLine(i, 'description2', e.target.value)} disabled={l.lineType === 'Comment'} className={`${input} w-full min-w-[120px]`} /></td>
-                <td className="p-1"><input value={l.quantity} onChange={e => { setLine(i, 'quantity', e.target.value); updateVat(i, e.target.value, l.unitCost, l.taxCode); }} disabled={l.lineType === 'Comment'} className={`${input} w-16 text-right tabular-nums`} /></td>
-                <td className="p-1"><input value={l.unitCost} onChange={e => { setLine(i, 'unitCost', e.target.value); updateVat(i, l.quantity, e.target.value, l.taxCode); }} disabled={l.lineType === 'Comment'} className={`${input} w-24 text-right tabular-nums`} /></td>
-                <td className="p-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-700">{l.lineType === 'Comment' ? '' : fmt(toNum(l.quantity) * toNum(l.unitCost))}</td>
-                <td className="p-1">
-                  {l.lineType === 'Comment' ? (
-                    <span className="text-gray-400 text-xs px-2">—</span>
-                  ) : (
-                    <select
-                      value={l.taxCode}
-                      onChange={e => {
-                        const code = e.target.value;
-                        setLine(i, 'taxCode', code);
-                        updateVat(i, l.quantity, l.unitCost, code);
-                      }}
-                      className={`${input} w-36 font-semibold text-xs`}
-                    >
-                      {!l.taxCode && <option value="">— Seleccionar —</option>}
-                      {taxGroups.map(tg => (
-                        <option key={tg.code} value={tg.code}>
-                          {tg.code} ({tg.rate}%)
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </td>
-                <td className="p-1">
-                  {l.lineType === 'Comment' ? (
-                    <span className="text-gray-400 text-xs px-2">—</span>
-                  ) : (
-                    <input
-                      value={l.vatAmount}
-                      onChange={e => setLine(i, 'vatAmount', e.target.value)}
-                      placeholder="0,00"
-                      className={`${input} w-24 text-right tabular-nums font-mono text-xs`}
-                    />
-                  )}
-                </td>
-                <td className="p-1"><button onClick={() => removeLine(i)} title="Quitar línea" className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14} /></button></td>
-              </tr>
-            ))}
-            <tr className="border-t border-gray-200 bg-gray-50/60 font-semibold text-xs text-gray-700">
-              <td colSpan={6} className="p-2">
-                <button onClick={() => addLine()} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:underline"><Plus size={13} /> Añadir línea</button>
-              </td>
-              <td className="p-2 text-right tabular-nums whitespace-nowrap text-gray-900 font-bold" title="Total Neto">
-                {fmt(sumNet)}
-              </td>
-              <td className="p-2 text-left uppercase text-gray-500 font-bold text-[11px]">
-                Total IVA:
-              </td>
-              <td className="p-2 text-right tabular-nums whitespace-nowrap text-indigo-700 font-bold" title="Total IVA">
-                {fmt(sumVat)}
-              </td>
-              <td />
-            </tr>
-          </tbody>
-        </table>
+          {/* Tabla de líneas con scroll horizontal para evitar desbordamientos y recortes */}
+          <div className="overflow-x-auto w-full border border-gray-200 rounded-lg bg-white shadow-2xs">
+            <table className="w-full text-xs min-w-[830px] divide-y divide-gray-200">
+              <thead className="text-[11px] uppercase tracking-wider text-gray-500 bg-gray-50">
+                <tr>
+                  <th className="p-2 text-left w-24">Tipo</th>
+                  <th className="p-2 text-left w-36">Nº</th>
+                  <th className="p-2 text-left min-w-[200px]">Descripción</th>
+                  <th className="p-2 text-left min-w-[110px]">Description 2</th>
+                  <th className="p-2 text-right w-16">Cantidad</th>
+                  <th className="p-2 text-right w-24">Coste unit. ({s?.currency || d.currency || d.vendor?.currency || 'EUR'})</th>
+                  <th className="p-2 text-right w-20">Neto línea</th>
+                  <th className="p-2 text-left w-32">
+                    Grupo IVA
+                    {s?.isReverseCharge && (
+                      <span className="ml-1 inline-block text-[10px] normal-case text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-0.5 rounded font-normal">
+                        Revertido (0%)
+                      </span>
+                    )}
+                  </th>
+                  <th className="p-2 text-right w-24">Importe IVA</th>
+                  <th className="p-2 w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {f.lines.map((l, i) => (
+                  <tr key={i} className="hover:bg-gray-50/50">
+                    <td className="p-1.5"><select value={l.lineType} onChange={e => setLine(i, 'lineType', e.target.value)} className={`${input} text-xs py-1`}>{LINE_TYPES.map(t => <option key={t}>{t}</option>)}</select></td>
+                    <td className="p-1.5">
+                      {l.lineType === 'Account' ? (
+                        <AccountCombobox
+                          value={l.number}
+                          accounts={accounts}
+                          loading={loadingAccounts}
+                          disabled={false}
+                          onChange={(num, name, vatProdGroup) => {
+                            setLine(i, 'number', num);
+                            if (name) {
+                              setLine(i, 'description', name);
+                            }
+                            const effectiveVat = vatProdGroup || l.taxCode || 'IVA21';
+                            setLine(i, 'taxCode', effectiveVat);
+                            updateVat(i, l.quantity, l.unitCost, effectiveVat);
+                          }}
+                        />
+                      ) : l.lineType === 'Item' ? (
+                        <ItemCombobox
+                          value={l.number}
+                          items={items}
+                          loading={loadingItems}
+                          disabled={false}
+                          onChange={(num, name, taxGroup) => {
+                            setLine(i, 'number', num);
+                            if (name) {
+                              setLine(i, 'description', name);
+                            }
+                            const effectiveVat = taxGroup || l.taxCode || 'IVA21';
+                            setLine(i, 'taxCode', effectiveVat);
+                            updateVat(i, l.quantity, l.unitCost, effectiveVat);
+                          }}
+                        />
+                      ) : (
+                        <input
+                          value={l.number}
+                          onChange={e => setLine(i, 'number', e.target.value)}
+                          disabled={l.lineType === 'Comment'}
+                          placeholder={l.lineType === 'Comment' ? '' : 'Nº'}
+                          className={`${input} w-28 font-mono text-xs py-1 ${!l.number && l.lineType !== 'Comment' ? 'border-red-400' : ''}`}
+                        />
+                      )}
+                    </td>
+                    <td className="p-1.5"><input value={l.description} maxLength={100} onChange={e => setLine(i, 'description', e.target.value)} className={`${input} w-full min-w-[180px] text-xs py-1`} /></td>
+                    <td className="p-1.5"><input value={l.description2} maxLength={50} onChange={e => setLine(i, 'description2', e.target.value)} disabled={l.lineType === 'Comment'} className={`${input} w-full min-w-[100px] text-xs py-1`} /></td>
+                    <td className="p-1.5"><input value={l.quantity} onChange={e => { setLine(i, 'quantity', e.target.value); updateVat(i, e.target.value, l.unitCost, l.taxCode); }} disabled={l.lineType === 'Comment'} className={`${input} w-16 text-right tabular-nums text-xs py-1`} /></td>
+                    <td className="p-1.5"><input value={l.unitCost} onChange={e => { setLine(i, 'unitCost', e.target.value); updateVat(i, l.quantity, e.target.value, l.taxCode); }} disabled={l.lineType === 'Comment'} className={`${input} w-20 text-right tabular-nums text-xs py-1`} /></td>
+                    <td className="p-1.5 text-right tabular-nums whitespace-nowrap font-medium text-gray-700 text-xs">{l.lineType === 'Comment' ? '' : fmt(toNum(l.quantity) * toNum(l.unitCost))}</td>
+                    <td className="p-1.5">
+                      {l.lineType === 'Comment' ? (
+                        <span className="text-gray-400 text-xs px-2">—</span>
+                      ) : (
+                        <select
+                          value={l.taxCode}
+                          onChange={e => {
+                            const code = e.target.value;
+                            setLine(i, 'taxCode', code);
+                            updateVat(i, l.quantity, l.unitCost, code);
+                          }}
+                          className={`${input} w-28 font-semibold text-xs py-1`}
+                        >
+                          {!l.taxCode && <option value="">— Seleccionar —</option>}
+                          {taxGroups.map(tg => (
+                            <option key={tg.code} value={tg.code}>
+                              {tg.code} ({tg.rate}%)
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="p-1.5">
+                      {l.lineType === 'Comment' ? (
+                        <span className="text-gray-400 text-xs px-2">—</span>
+                      ) : (
+                        <input
+                          value={l.vatAmount}
+                          onChange={e => setLine(i, 'vatAmount', e.target.value)}
+                          placeholder="0,00"
+                          className={`${input} w-20 text-right tabular-nums font-mono text-xs py-1`}
+                        />
+                      )}
+                    </td>
+                    <td className="p-1.5 text-center"><button onClick={() => removeLine(i)} title="Quitar línea" className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14} /></button></td>
+                  </tr>
+                ))}
+                <tr className="border-t border-gray-200 bg-gray-50/70 font-semibold text-xs text-gray-700">
+                  <td colSpan={6} className="p-2">
+                    <button onClick={() => addLine()} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:underline"><Plus size={13} /> Añadir línea</button>
+                  </td>
+                  <td className="p-2 text-right tabular-nums whitespace-nowrap text-gray-900 font-bold" title="Total Neto">
+                    {fmt(sumNet)}
+                  </td>
+                  <td className="p-2 text-left uppercase text-gray-500 font-bold text-[11px]">
+                    Total IVA:
+                  </td>
+                  <td className="p-2 text-right tabular-nums whitespace-nowrap text-indigo-700 font-bold" title="Total IVA">
+                    {fmt(sumVat)}
+                  </td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
         <div className={`flex flex-wrap items-center justify-between gap-4 p-3 rounded-lg text-xs border ${
           isCredit

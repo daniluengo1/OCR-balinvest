@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "prisma generate && next build",
     "start": "next start",
     "deploy": "git add -A && git commit -m \"Actualización automática\" && git push"
@@ -16,7 +16,8 @@
     "postal-mime": "3.0.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "unpdf": "^1.8.1"
+    "unpdf": "^1.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

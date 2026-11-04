@@ -392,6 +392,7 @@ export async function vendorHistory(ctx: BcContext, vendor: string) {
       if (fbData.value && fbData.value.length) {
         hData = fbData;
         targetCompany = fallbackCompany;
+        targetOData = fallbackOdata;
         try {
           const compList = await bcGet(ctx, `${ctx.root}/api/v2.0/companies`);
           const c2023 = (compList.value || []).find((c: any) => /2023/i.test(c.name));
@@ -405,59 +406,146 @@ export async function vendorHistory(ctx: BcContext, vendor: string) {
       const history: HistoryInvoice[] = [];
       for (const inv of postedInvoices.slice(0, 5)) {
         const docNo = inv.No;
-        let gleEntries: any[] = [];
-        try {
-          const gleRes = await bcGet(ctx, `${ctx.root}/api/v2.0/companies(${targetCompanyId})/generalLedgerEntries?$filter=documentNumber eq '${q(docNo)}'`);
-          gleEntries = gleRes.value || [];
-        } catch {}
+        let lines: OcrLine[] = [];
 
-        // Cuentas de compras y gastos (Grupo 6 de contabilidad o débitos que no sean IVA/Proveedores/Existencias)
-        const expenseEntries = gleEntries.filter((e: any) =>
-          e.debitAmount > 0 && (e.accountNumber.startsWith('6') || (!e.accountNumber.startsWith('4') && !e.accountNumber.startsWith('3')))
-        );
+        // 1. Intentar consultar las Líneas de Factura de Compra Registradas (Purch. Inv. Line - Tabla 123)
+        // Permite recuperar tanto Artículos (Item) como Cuentas Contables (Account)
+        const lineServices = [
+          'Hist%C3%B3rico_facturas_compra_l%C3%ADneas_Excel',
+          'Hist%C3%B3rico_facturas_compra_lineas_Excel',
+          'L%C3%ADneas_factura_compra_reg_Excel',
+          'L%C3%ADneas_factura_compra_Excel',
+          'Lineas_factura_compra_reg_Excel',
+          'Lineas_factura_compra_Excel',
+          'Posted_Purchase_Invoice_Lines_Excel',
+          'Purch_Inv_Lines_Excel',
+          'Purch_Inv_Line_Excel',
+        ];
 
-        // Cuenta de IVA soportado (Grupo 472)
-        const taxEntry = gleEntries.find((e: any) => e.debitAmount > 0 && e.accountNumber.startsWith('472'));
-        const net = expenseEntries.reduce((sum: number, e: any) => sum + (e.debitAmount || 0), 0);
-        const vat = taxEntry ? Math.round(taxEntry.debitAmount * 100) / 100 : 0;
-        let vatGroup = 'IVA21';
-        if (net > 0 && vat > 0) {
-          const r = Math.round((vat / net) * 100);
-          if (r >= 18 && r <= 25) vatGroup = 'IVA21';
-          else if (r >= 8 && r <= 15) vatGroup = 'IVA10';
-          else if (r >= 3 && r <= 6) vatGroup = 'IVA4';
-        } else if (vat === 0) {
-          vatGroup = 'EXENTO';
+        for (const s of lineServices) {
+          try {
+            const lRes = await bcGet(ctx, odataUrl(`${targetOData}/${s}`, {
+              $filter: `Document_No eq '${q(docNo)}'`,
+            }));
+            if (lRes.value && lRes.value.length > 0) {
+              lines = lRes.value.map((l: any) => {
+                const rawType = String(l.Type || l.type || '').trim();
+                let lineType: 'Account' | 'Item' | 'Resource' | 'Fixed Asset' | 'Charge' | 'Comment' = 'Account';
+                if (/item|art[ií]culo/i.test(rawType) || rawType === '1' || l.lineObjectNumber) {
+                  lineType = 'Item';
+                } else if (/account|cuenta|g_x002f_l|g\/l/i.test(rawType) || rawType === '2') {
+                  lineType = 'Account';
+                } else if (/fixed|activo/i.test(rawType)) {
+                  lineType = 'Fixed Asset';
+                } else if (/charge|cargo/i.test(rawType)) {
+                  lineType = 'Charge';
+                }
+
+                const number = String(l.No || l.No_ || l.no || l.lineObjectNumber || '').trim();
+                let description = String(l.Description || l.description || '').trim();
+                if (itmMap.has(number) && (!accMap.has(number) || lineType === 'Item')) {
+                  lineType = 'Item';
+                }
+                if (lineType === 'Item' && itmMap.has(number)) {
+                  description = itmMap.get(number) || description;
+                } else if (lineType === 'Account' && accMap.has(number)) {
+                  description = accMap.get(number) || description;
+                }
+
+                const qty = Math.abs(parseFloat(l.Quantity || l.quantity || '1')) || 1;
+                const cost = Math.abs(parseFloat(l.Direct_Unit_Cost || l.directUnitCost || l.Unit_Cost || l.unitCost || '0')) || 0;
+                const taxCode = String(l.VAT_Prod_Posting_Group || l.vatProdPostingGroup || l.taxCode || 'IVA21').trim();
+
+                return {
+                  lineType,
+                  number,
+                  description: description || (lineType === 'Item' ? `Artículo ${number}` : `Cuenta ${number}`),
+                  description2: String(l.Description_2 || l.description2 || '').trim(),
+                  quantity: qty,
+                  unitCost: cost,
+                  taxCode,
+                  vatAmount: Math.round(cost * (taxCode === 'IVA21' ? 0.21 : 0.10) * 100) / 100,
+                };
+              }).filter((l: OcrLine) => l.number || l.description);
+              if (lines.length > 0) break;
+            }
+          } catch {}
         }
 
-        let lines: OcrLine[] = [];
-        if (expenseEntries.length > 0) {
-          lines = expenseEntries.map((e: any) => {
-            const cost = Math.round(e.debitAmount * 100) / 100;
-            const rate = vatGroup === 'IVA21' ? 0.21 : vatGroup === 'IVA10' ? 0.10 : vatGroup === 'IVA4' ? 0.04 : 0;
-            const accName = accMap.get(e.accountNumber);
-            return {
+        // 2. Si no se encontró por OData, probar por API custom o API v2
+        if (!lines.length) {
+          try {
+            const customUrl = odataUrl(`${ctx.customApiBase}/purchInvLines`, {
+              $filter: `documentNo eq '${q(docNo)}'`,
+            });
+            const res = await bcGet(ctx, customUrl);
+            if (res.value && res.value.length > 0) {
+              lines = res.value.map(toLine);
+            }
+          } catch {}
+        }
+
+        let net = 0;
+        let vat = 0;
+
+        if (lines.length > 0) {
+          net = lines.reduce((sum, l) => sum + (l.quantity * l.unitCost), 0);
+          vat = lines.reduce((sum, l) => sum + (l.vatAmount || 0), 0);
+        } else {
+          // 3. Fallback a contabilidad (General Ledger Entries) solo si la tabla de líneas de compra no estuviera disponible
+          let gleEntries: any[] = [];
+          try {
+            const gleRes = await bcGet(ctx, `${ctx.root}/api/v2.0/companies(${targetCompanyId})/generalLedgerEntries?$filter=documentNumber eq '${q(docNo)}'`);
+            gleEntries = gleRes.value || [];
+          } catch {}
+
+          // Cuentas de compras y gastos (Grupo 6 de contabilidad o débitos que no sean IVA/Proveedores/Existencias)
+          const expenseEntries = gleEntries.filter((e: any) =>
+            e.debitAmount > 0 && (e.accountNumber.startsWith('6') || (!e.accountNumber.startsWith('4') && !e.accountNumber.startsWith('3')))
+          );
+
+          // Cuenta de IVA soportado (Grupo 472)
+          const taxEntry = gleEntries.find((e: any) => e.debitAmount > 0 && e.accountNumber.startsWith('472'));
+          net = expenseEntries.reduce((sum: number, e: any) => sum + (e.debitAmount || 0), 0);
+          vat = taxEntry ? Math.round(taxEntry.debitAmount * 100) / 100 : 0;
+          let vatGroup = 'IVA21';
+          if (net > 0 && vat > 0) {
+            const r = Math.round((vat / net) * 100);
+            if (r >= 18 && r <= 25) vatGroup = 'IVA21';
+            else if (r >= 8 && r <= 15) vatGroup = 'IVA10';
+            else if (r >= 3 && r <= 6) vatGroup = 'IVA4';
+          } else if (vat === 0) {
+            vatGroup = 'EXENTO';
+          }
+
+          if (expenseEntries.length > 0) {
+            lines = expenseEntries.map((e: any) => {
+              const cost = Math.round(e.debitAmount * 100) / 100;
+              const rate = vatGroup === 'IVA21' ? 0.21 : vatGroup === 'IVA10' ? 0.10 : vatGroup === 'IVA4' ? 0.04 : 0;
+              const accName = accMap.get(e.accountNumber);
+              return {
+                lineType: 'Account',
+                number: e.accountNumber,
+                description: accName || e.description || inv.OperationDescription || 'Gasto proveedor',
+                description2: '',
+                quantity: 1,
+                unitCost: cost,
+                taxCode: vatGroup,
+                vatAmount: Math.round(cost * rate * 100) / 100,
+              };
+            });
+          } else {
+            lines = [{
               lineType: 'Account',
-              number: e.accountNumber,
-              description: accName || e.description || inv.OperationDescription || 'Gasto proveedor',
+              number: '',
+              description: inv.OperationDescription || 'Gasto proveedor',
               description2: '',
               quantity: 1,
-              unitCost: cost,
+              unitCost: 0,
               taxCode: vatGroup,
-              vatAmount: Math.round(cost * rate * 100) / 100,
-            };
-          });
-        } else {
-          lines = [{
-            lineType: 'Account',
-            number: '',
-            description: inv.OperationDescription || 'Gasto proveedor',
-            description2: '',
-            quantity: 1,
-            unitCost: 0,
-            taxCode: vatGroup,
-            vatAmount: 0,
-          }];
+              vatAmount: 0,
+            }];
+          }
         }
 
         history.push({
@@ -820,15 +908,29 @@ function totals(t: string) {
     }
   }
 
-  // 2. Patrones explícitos de Subtotal / Base Imponible
+  // 2. Patrones explícitos de IVA (buscado antes del neto para asegurar cuadre aritmético)
+  if (vat == null) {
+    const VAT_PATTERNS = [
+      new RegExp(String.raw`(?:vat\s*\(\s*21\s*%\s*\)[^:\d\n\r]*|tax\s+subtotal|vat\s*\(\s*0\s*%\s*\)|suma\s+cz[ęe][śs]ciowa\s+podatku|delsumma\s+f[öo]r\s+skatt)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:total\s+tax(?:\s+amount)?|cuota\s+iva|importe\s+iva|total\s+iva|vat\s+amount|mwst\.?|ust\.?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+    ];
+
+    for (const p of VAT_PATTERNS) {
+      const m = t.match(p);
+      if (m) {
+        vat = parseAmount(m[1]);
+        if (vat != null) break;
+      }
+    }
+  }
+
+  // 3. Patrones explícitos de Subtotal / Base Imponible
   if (net == null) {
     const NET_PATTERNS = [
-      new RegExp(String.raw`(?:suma\s+cz[ęe][śs]ciowa)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:delsumma)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:subtotal|net\s+amount|taxable\s+amount)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:base\s+imponible|total\s+neto|subtotal\s+neto|importe\s+base)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:\bsubtotal\b|\bbase\s+imponible\b)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:net\s+amount|taxable\s+amount|total\s+neto|subtotal\s+neto|importe\s+base)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
       new RegExp(String.raw`(?:preis\s*\(ohne\s+ust\.\)|ohne\s+ust\.|nettobetrag|zwischensumme)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:ca[łl]kowite\s+op[łl]aty\s+za\s+kampani[ęe]|totala\s+kampanjavgifter|total\s+campaign\s+charges)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
+      new RegExp(String.raw`(?:suma\s+cz[ęe][śs]ciowa|delsumma)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
     ];
 
     for (const p of NET_PATTERNS) {
@@ -840,19 +942,12 @@ function totals(t: string) {
     }
   }
 
-  // 3. Patrones explícitos de IVA
-  if (vat == null) {
-    const VAT_PATTERNS = [
-      new RegExp(String.raw`(?:vat\s*\(\s*0\s*%\s*\)|tax\s+subtotal|suma\s+cz[ęe][śs]ciowa\s+podatku|delsumma\s+f[öo]r\s+skatt)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-      new RegExp(String.raw`(?:total\s+tax(?:\s+amount)?|cuota\s+iva|importe\s+iva|total\s+iva|vat\s+amount|mwst\.?|ust\.?)\s*[:.]?\s*(${numRe})(?:PLN|EUR|SEK|[a-z]{3}|[$€£]|\s|$)`, 'i'),
-    ];
-
-    for (const p of VAT_PATTERNS) {
-      const m = t.match(p);
-      if (m) {
-        vat = parseAmount(m[1]);
-        if (vat != null) break;
-      }
+  // Coherencia aritmética estricta: Total = Neto + IVA (Subtotal + IVA = Total factura)
+  if (total != null && vat != null && vat > 0) {
+    const calculatedNet = Math.round((total - vat) * 100) / 100;
+    // Si el neto extraído es null o difiere de total - vat (ej. cogió un cargo de campaña parcial como 486.86 en vez de 500.48)
+    if (net == null || Math.abs((net + vat) - total) > 0.05) {
+      net = calculatedNet;
     }
   }
 
@@ -944,6 +1039,11 @@ export function propose(
     else if (absVat === 0) defaultTaxCode = 'EXENTO';
   }
 
+  const isAmazonAds = Boolean(
+    (vendor && (/B87523825/i.test(vendor.vat || '') || /Amazon\s+Online/i.test(vendor.name || ''))) ||
+    /ESB87523825|Amazon\s+Online\s+Spain|Amazon\s+Advertising/i.test(t)
+  );
+
   const model = history[0];
   let lines: OcrLine[] = [];
   if (model && model.lines.length) {
@@ -953,14 +1053,20 @@ export function propose(
       vatAmount: reverseChargeEffective ? 0 : (l.vatAmount != null ? Math.abs(l.vatAmount) : 0),
     }));
     if (absNet != null) {
-      const sum = lines.reduce((a, l) => a + Math.abs(l.quantity) * Math.abs(l.unitCost), 0) || 1;
-      lines.forEach(l => {
-        const qty = Math.abs(l.quantity) || 1;
-        const prevCost = Math.abs(l.unitCost);
-        l.quantity = qty;
-        l.unitCost = r2((absNet * (qty * prevCost)) / sum / qty);
-        l.vatAmount = reverseChargeEffective ? 0 : (absVat != null ? r2((absVat * (qty * l.unitCost)) / absNet) : r2(l.unitCost * 0.21));
-      });
+      if (lines.length === 1) {
+        lines[0].quantity = 1;
+        lines[0].unitCost = absNet;
+        lines[0].vatAmount = reverseChargeEffective ? 0 : (absVat != null ? absVat : r2(absNet * 0.21));
+      } else {
+        const sum = lines.reduce((a, l) => a + Math.abs(l.quantity) * Math.abs(l.unitCost), 0) || 1;
+        lines.forEach(l => {
+          const qty = Math.abs(l.quantity) || 1;
+          const prevCost = Math.abs(l.unitCost);
+          l.quantity = qty;
+          l.unitCost = r2((absNet * (qty * prevCost)) / sum / qty);
+          l.vatAmount = reverseChargeEffective ? 0 : (absVat != null ? r2((absVat * (qty * l.unitCost)) / absNet) : r2(l.unitCost * 0.21));
+        });
+      }
     }
   } else {
     // Si no hay histórico, sugerimos una línea genérica con el neto detectado
@@ -976,9 +1082,28 @@ export function propose(
     }];
   }
 
+  // Prioridad para facturas de Amazon Ads / Amazon Online Spain:
+  // Balinvest registra la publicidad de Amazon como Artículo (Item) 1014
+  if (isAmazonAds && (!model || lines.every(l => l.lineType !== 'Item'))) {
+    lines = [{
+      lineType: 'Item',
+      number: '1014',
+      description: 'PUBLICIDAD / ADS AMAZON',
+      description2: '',
+      quantity: 1,
+      unitCost: absNet || 0,
+      taxCode: defaultTaxCode,
+      vatAmount: reverseChargeEffective ? 0 : (absVat != null ? absVat : (absNet ? r2(absNet * 0.21) : 0)),
+    }];
+  }
+
   let comment = '';
   if (reverseChargeEffective) {
     comment = 'Operación intracomunitaria con IVA revertido / Inversión de sujeto pasivo (art. 44 y 196 Directiva 2006/112/CE) · 0% IVA en factura.';
+  } else if (isAmazonAds && lines[0]?.lineType === 'Item' && lines[0]?.number === '1014') {
+    comment = model
+      ? `Basado en el histórico de compras · Artículo 1014 (${lines[0].description})`
+      : 'Factura Amazon Ads · Registrada como Artículo 1014 según histórico de compras';
   } else if (model) {
     comment = `Basado en la factura anterior ${model.number}`;
   } else {
