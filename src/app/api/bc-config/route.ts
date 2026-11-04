@@ -115,11 +115,22 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
       message: 'Conexión verificada con éxito con Microsoft Dynamics 365 Business Central.',
       companies,
     });
+
+    if (!testOnly && finalSecret) {
+      res.cookies.set('bc_client_secret', finalSecret, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 31536000,
+      });
+    }
+
+    return res;
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }

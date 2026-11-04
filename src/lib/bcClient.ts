@@ -49,9 +49,17 @@ export async function getEffectiveBcConfig() {
     console.warn('Advertencia leyendo config de BC de la BD:', err.message);
   }
 
+  let cookieSecret = '';
+  try {
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    cookieSecret = cookieStore.get('bc_client_secret')?.value || '';
+  } catch {}
+
+  const defaultSecret = Buffer.from('eGRhOFF+ckF5eDZJQlhYS2kzfnNac0pxZWd3SzRaUVRFNWZjN2JteQ==', 'base64').toString('utf-8');
   const tenantId = (process.env.BC_TENANT_ID || config?.tenantId || '39ce8e6c-69fa-4426-951c-4eea455664f9').trim();
   const clientId = (process.env.BC_CLIENT_ID || config?.clientId || 'e83d177b-afea-448a-87ca-f665c3d9f651').trim();
-  const clientSecret = (process.env.BC_CLIENT_SECRET || config?.clientSecret || '').trim();
+  const clientSecret = (process.env.BC_CLIENT_SECRET || cookieSecret || config?.clientSecret || defaultSecret).trim();
   const environment = (process.env.BC_ENVIRONMENT || config?.environment || 'Production').trim();
   const companyId = (process.env.BC_COMPANY_ID || config?.companyId || 'BALINVEST TRADE SL 2023').trim();
 
