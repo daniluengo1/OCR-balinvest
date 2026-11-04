@@ -414,7 +414,7 @@ export async function customerHistory(ctx: BcContext, customerNo: string) {
 
       history.push({
         number: inv.number,
-        vendorInvoiceNumber: inv.customerPurchaseOrderNumber || inv.externalDocumentNumber || inv.number,
+        vendorInvoiceNumber: inv.externalDocumentNumber || inv.number,
         invoiceDate: inv.invoiceDate || '',
         postingDate: inv.postingDate || '',
         dueDate: inv.dueDate || '',
@@ -448,7 +448,7 @@ export async function existingForSales(ctx: BcContext, customerNo: string, invoi
       for (const cm of cms) out.push({ id: cm.id, no: cm.number });
     } else {
       const invs = await bcFetchAll(odataUrl(`${ctx.apiBase}/salesInvoices`, {
-        $filter: `customerNumber eq '${q(customerNo)}' and (customerPurchaseOrderNumber eq '${q(cleanNo)}' or externalDocumentNumber eq '${q(cleanNo)}' or number eq '${q(cleanNo)}')`,
+        $filter: `customerNumber eq '${q(customerNo)}' and (externalDocumentNumber eq '${q(cleanNo)}' or number eq '${q(cleanNo)}')`,
         $select: 'id,number'
       }), ctx.token).catch(() => []);
       for (const i of invs) out.push({ id: i.id, no: i.number });
@@ -655,7 +655,6 @@ export async function createOcrSalesInvoice(ctx: BcContext, input: OcrCreateSale
   // 1. Crear cabecera de la Factura de Venta (Sales Invoice)
   const headPayload: any = {
     customerNumber: input.customer,
-    customerPurchaseOrderNumber: input.invoiceNo,
     externalDocumentNumber: input.invoiceNo,
     ...(input.currency && input.currency !== 'EUR' && input.currency !== 'EU' ? { currencyCode: input.currency } : {}),
     ...(input.invoiceDate ? { invoiceDate: input.invoiceDate } : {}),
@@ -691,6 +690,15 @@ export async function createOcrSalesInvoice(ctx: BcContext, input: OcrCreateSale
   } catch (e) {
     await bcRequest('DELETE', headUrl, ctx.token).catch(() => {});
     throw e;
+  }
+
+  // Posting Description vía OData si está disponible
+  if (input.postingDescription?.trim()) {
+    try {
+      await bcRequest('PATCH', `${ctx.odataCompanyBase}/salesDocuments(${id})`, ctx.token, {
+        postingDescription: input.postingDescription.trim().substring(0, 100)
+      });
+    } catch {}
   }
 
   // Adjuntar PDF original a la factura de venta
@@ -756,6 +764,15 @@ export async function createOcrSalesCreditMemo(ctx: BcContext, input: OcrCreateS
   } catch (e) {
     await bcRequest('DELETE', headUrl, ctx.token).catch(() => {});
     throw e;
+  }
+
+  // Posting Description vía OData si está disponible
+  if (input.postingDescription?.trim()) {
+    try {
+      await bcRequest('PATCH', `${ctx.odataCompanyBase}/salesDocuments(${id})`, ctx.token, {
+        postingDescription: input.postingDescription.trim().substring(0, 100)
+      });
+    } catch {}
   }
 
   // Adjuntar PDF original al abono de venta
