@@ -220,7 +220,9 @@ export async function matchVendors(ctx: BcContext, text: string, ids: string[], 
   const out: VendorCandidate[] = [];
 
   for (const v of vendors) {
-    if (norm(v.name).includes('balinvest') || v.vat === ownVatNoEs || v.vat === ownVatSquashed) continue;
+    const currentCompNorm = norm(ctx.companyName);
+    const isOwnCompany = (currentCompNorm.length > 3 && norm(v.name).includes(currentCompNorm)) || v.vat === ownVatNoEs || v.vat === ownVatSquashed;
+    if (isOwnCompany) continue;
     let score = 0;
     const reasons: string[] = [];
     const learnt = ids.filter(id => hints[id] === v.number);
@@ -421,9 +423,9 @@ export async function vendorHistory(ctx: BcContext, vendor: string) {
       $top: '10',
     })).catch(() => ({ value: [] }));
 
-    // Fallback: Si no hay facturas en la empresa actual, buscar en BALINVEST TRADE SL 2023 (donde reside el histórico contable)
-    if ((!hData.value || !hData.value.length) && !/2023/i.test(ctx.companyName)) {
-      const fallbackCompany = 'BALINVEST TRADE SL 2023';
+    // Fallback: Si no hay facturas en la empresa actual, buscar en fallbackCompany si está configurada
+    const fallbackCompany = process.env.BC_FALLBACK_COMPANY || (ctx.companyName.toUpperCase().includes('BALINVEST') ? 'BALINVEST TRADE SL 2023' : '');
+    if (fallbackCompany && (!hData.value || !hData.value.length) && !ctx.companyName.includes(fallbackCompany)) {
       const fallbackOdata = `${ctx.root}/ODataV4/Company('${encodeURIComponent(fallbackCompany)}')`;
       const fbData = await bcGet(ctx, odataUrl(`${fallbackOdata}/Hist%C3%B3rico_facturas_compra_Excel`, {
         $filter: `Buy_from_Vendor_No eq '${q(vendor)}'`,

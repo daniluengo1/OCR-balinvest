@@ -146,6 +146,8 @@ export async function POST(req: Request) {
       }
     }
 
+    const selectedCompName = companyId || (companies[0]?.name ?? '');
+
     const res = NextResponse.json({
       ok: true,
       detectedEnvironment: activeEnv !== environment?.trim() ? activeEnv : undefined,
@@ -153,15 +155,32 @@ export async function POST(req: Request) {
         ? `Conexión verificada con éxito con Business Central (entorno detectado: "${activeEnv}").`
         : 'Conexión verificada con éxito con Microsoft Dynamics 365 Business Central.',
       companies,
+      config: {
+        tenantId: finalTenant,
+        clientId: finalClient,
+        environment: activeEnv,
+        companyId: selectedCompName,
+      },
     });
 
-    if (!testOnly && finalSecret) {
-      res.cookies.set('bc_client_secret', finalSecret, {
+    if (!testOnly) {
+      const cookieOpts = {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: 'lax' as const,
         path: '/',
         maxAge: 31536000,
-      });
+      };
+      res.cookies.set('bc_tenant_id', finalTenant, cookieOpts);
+      res.cookies.set('bc_client_id', finalClient, cookieOpts);
+      if (finalSecret) {
+        res.cookies.set('bc_client_secret', finalSecret, cookieOpts);
+      }
+      res.cookies.set('bc_environment', activeEnv, cookieOpts);
+      if (selectedCompName) {
+        res.cookies.set('bc_company_id', selectedCompName, cookieOpts);
+        res.cookies.set('empresa_activa', selectedCompName, { sameSite: 'lax', path: '/', maxAge: 31536000 });
+        res.cookies.set('craze_selected_company', selectedCompName, { sameSite: 'lax', path: '/', maxAge: 31536000 });
+      }
     }
 
     return res;

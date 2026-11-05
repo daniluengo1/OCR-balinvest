@@ -36,7 +36,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
         const stored = localStorage.getItem('empresa_activa');
         const defaultCompany = (data.config?.companyId && list.some(c => c.name === data.config.companyId))
           ? data.config.companyId
-          : (list.find(c => /2023/i.test(c.name))?.name || list[0]?.name || '');
+          : (list[0]?.name || '');
 
         if (stored && list.some(c => c.name === stored)) {
           setSelectedCompanyState(stored);
@@ -47,6 +47,8 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem('empresa_activa', defaultCompany);
           document.cookie = `empresa_activa=${encodeURIComponent(defaultCompany)}; path=/; max-age=31536000`;
           document.cookie = `craze_selected_company=${encodeURIComponent(defaultCompany)}; path=/; max-age=31536000`;
+        } else {
+          setSelectedCompanyState('');
         }
       }
     } catch (e) {

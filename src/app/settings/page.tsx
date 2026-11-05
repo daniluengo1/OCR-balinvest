@@ -102,6 +102,9 @@ export default function SettingsPage() {
         setStatus('success');
         setMessage(data.message || 'Conexión completada con éxito.');
         setCompanies(data.companies || []);
+        if (data.detectedEnvironment) {
+          setEnvironment(data.detectedEnvironment);
+        }
         setSecretSet(true);
         setClientSecret('');
         await refreshCompanies();

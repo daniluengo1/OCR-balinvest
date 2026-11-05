@@ -40,8 +40,24 @@ export async function getAccessToken(tenantId: string, clientId: string, clientS
   return data.access_token;
 }
 
-// Obtiene la configuración efectiva (prioridad a variables de entorno de Vercel/sistema, fallback a BD o defaults)
+// Obtiene la configuración efectiva (prioridad a variables de entorno de Vercel/sistema, cookies de sesión, BD)
 export async function getEffectiveBcConfig() {
+  let cookieTenant = '';
+  let cookieClient = '';
+  let cookieSecret = '';
+  let cookieEnv = '';
+  let cookieCompany = '';
+
+  try {
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get('bc_tenant_id')?.value || '';
+    cookieClient = cookieStore.get('bc_client_id')?.value || '';
+    cookieSecret = cookieStore.get('bc_client_secret')?.value || '';
+    cookieEnv = cookieStore.get('bc_environment')?.value || '';
+    cookieCompany = cookieStore.get('bc_company_id')?.value || cookieStore.get('empresa_activa')?.value || '';
+  } catch {}
+
   let config: any = null;
   try {
     config = await prisma.businessCentralConfig.findUnique({ where: { id: 1 } });
@@ -49,19 +65,12 @@ export async function getEffectiveBcConfig() {
     console.warn('Advertencia leyendo config de BC de la BD:', err.message);
   }
 
-  let cookieSecret = '';
-  try {
-    const { cookies } = await import('next/headers');
-    const cookieStore = await cookies();
-    cookieSecret = cookieStore.get('bc_client_secret')?.value || '';
-  } catch {}
-
-  const defaultSecret = Buffer.from('eGRhOFF+ckF5eDZJQlhYS2kzfnNac0pxZWd3SzRaUVRFNWZjN2JteQ==', 'base64').toString('utf-8');
-  const tenantId = (process.env.BC_TENANT_ID || config?.tenantId || '39ce8e6c-69fa-4426-951c-4eea455664f9').trim();
-  const clientId = (process.env.BC_CLIENT_ID || config?.clientId || 'e83d177b-afea-448a-87ca-f665c3d9f651').trim();
-  const clientSecret = (process.env.BC_CLIENT_SECRET || cookieSecret || config?.clientSecret || defaultSecret).trim();
-  const environment = (process.env.BC_ENVIRONMENT || config?.environment || 'Production').trim();
-  const companyId = (process.env.BC_COMPANY_ID || config?.companyId || 'BALINVEST TRADE SL 2023').trim();
+  // Prioridad: 1. Variables de entorno explícitas (Vercel) -> 2. Cookies de sesión guardadas en Ajustes -> 3. Base de datos
+  const tenantId = (process.env.BC_TENANT_ID || cookieTenant || config?.tenantId || '').trim();
+  const clientId = (process.env.BC_CLIENT_ID || cookieClient || config?.clientId || '').trim();
+  const clientSecret = (process.env.BC_CLIENT_SECRET || cookieSecret || config?.clientSecret || '').trim();
+  const environment = (process.env.BC_ENVIRONMENT || cookieEnv || config?.environment || 'Production').trim();
+  const companyId = (process.env.BC_COMPANY_ID || cookieCompany || config?.companyId || '').trim();
 
   return { tenantId, clientId, clientSecret, environment, companyId };
 }

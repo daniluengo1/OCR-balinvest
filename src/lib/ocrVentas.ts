@@ -174,7 +174,9 @@ export async function matchCustomers(ctx: BcContext, text: string, ids: string[]
   const out: CustomerCandidate[] = [];
 
   for (const c of customers) {
-    if (norm(c.name).includes('balinvest') || c.vat === ownVatNoEs || c.vat === ownVatSquashed) continue;
+    const currentCompNorm = norm(ctx.companyName);
+    const isOwnCompany = (currentCompNorm.length > 3 && norm(c.name).includes(currentCompNorm)) || c.vat === ownVatNoEs || c.vat === ownVatSquashed;
+    if (isOwnCompany) continue;
     let score = 0;
     const reasons: string[] = [];
 
@@ -310,13 +312,14 @@ export async function customerHistory(ctx: BcContext, customerNo: string) {
       $top: '10',
     }), ctx.token).catch(() => []);
 
-    // Fallback: Si no hay facturas en la empresa activa, buscar en BALINVEST TRADE SL 2023
-    if ((!postedInvoices || !postedInvoices.length) && !/2023/i.test(ctx.companyName)) {
+    // Fallback: Si no hay facturas en la empresa activa, buscar en fallbackCompany si está configurada
+    const fallbackCompany = process.env.BC_FALLBACK_COMPANY || (ctx.companyName.toUpperCase().includes('BALINVEST') ? 'BALINVEST TRADE SL 2023' : '');
+    if (fallbackCompany && (!postedInvoices || !postedInvoices.length) && !ctx.companyName.includes(fallbackCompany)) {
       try {
         const compList = await bcFetchAll(`${ctx.root}/api/v2.0/companies`, ctx.token);
-        const c2023 = (compList || []).find((c: any) => /2023/i.test(c.name));
-        if (c2023) {
-          const fallbackApi = `${ctx.root}/api/v2.0/companies(${c2023.id})`;
+        const fbComp = (compList || []).find((c: any) => c.name.toLowerCase().includes(fallbackCompany.toLowerCase()));
+        if (fbComp) {
+          const fallbackApi = `${ctx.root}/api/v2.0/companies(${fbComp.id})`;
           const fbInvoices = await bcFetchAll(odataUrl(`${fallbackApi}/salesInvoices`, {
             $filter: `customerNumber eq '${q(customerNo)}'`,
             $orderby: 'postingDate desc',
@@ -324,7 +327,7 @@ export async function customerHistory(ctx: BcContext, customerNo: string) {
           }), ctx.token).catch(() => []);
           if (fbInvoices && fbInvoices.length) {
             postedInvoices = fbInvoices;
-            targetCompanyId = c2023.id;
+            targetCompanyId = fbComp.id;
             targetApiBase = fallbackApi;
           }
         }
