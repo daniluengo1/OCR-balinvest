@@ -67,18 +67,49 @@ export async function POST(req: Request) {
     const token = await getAccessToken(finalTenant, finalClient, finalSecret);
 
     // 2. Probar acceso a la API de Business Central y listar empresas
-    const env = environment?.trim() || effective.environment || 'Production';
-    const root = `https://api.businesscentral.dynamics.com/v2.0/${finalTenant}/${env}`;
-    const compRes = await fetch(`${root}/api/v2.0/companies`, {
+    let activeEnv = environment?.trim() || effective.environment || 'Production';
+    let root = `https://api.businesscentral.dynamics.com/v2.0/${finalTenant}/${encodeURIComponent(activeEnv)}`;
+    let compRes = await fetch(`${root}/api/v2.0/companies`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       cache: 'no-store',
     });
 
+    // Si devuelve 404 NoEnvironment, probar automáticamente variantes comunes de nombres de entorno
+    if (!compRes.ok && compRes.status === 404) {
+      const errClone = compRes.clone();
+      const errText = await errClone.text();
+      if (/NoEnvironment|Environment does not exist/i.test(errText)) {
+        const candidates = ['Produccion', 'Producción', 'PROD', 'Production', 'Sandbox', 'Sandbox1', 'Live', 'Test']
+          .filter(c => c.toLowerCase() !== activeEnv.toLowerCase());
+
+        for (const candidate of candidates) {
+          const testRoot = `https://api.businesscentral.dynamics.com/v2.0/${finalTenant}/${encodeURIComponent(candidate)}`;
+          try {
+            const probe = await fetch(`${testRoot}/api/v2.0/companies`, {
+              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+              cache: 'no-store',
+            });
+            if (probe.ok) {
+              activeEnv = candidate;
+              compRes = probe;
+              root = testRoot;
+              break;
+            }
+          } catch {}
+        }
+      }
+    }
+
     if (!compRes.ok) {
       const errText = await compRes.text();
+      const isNoEnv = /NoEnvironment|Environment does not exist/i.test(errText);
+      const helpMsg = isNoEnv
+        ? ` El entorno "${activeEnv}" no existe en este Tenant de Business Central. Revisa el nombre exacto del entorno en la URL de Business Central (ej. https://businesscentral.dynamics.com/<tenant>/<entorno>) o en el Business Central Admin Center (suele ser "Produccion", "Sandbox", "PROD", etc.).`
+        : ` Verifica que la aplicación esté dada de alta en "Aplicaciones de Microsoft Entra" dentro de Business Central.`;
+
       return NextResponse.json({
         ok: false,
-        error: `Conexión con Entra ID exitosa, pero Business Central devolvió error ${compRes.status}: ${errText}. Verifica que la aplicación esté dada de alta en "Aplicaciones de Microsoft Entra" dentro de Business Central.`
+        error: `Conexión con Entra ID exitosa, pero Business Central devolvió error ${compRes.status}: ${errText}.${helpMsg}`
       }, { status: 400 });
     }
 
@@ -98,7 +129,7 @@ export async function POST(req: Request) {
             tenantId: finalTenant,
             clientId: finalClient,
             clientSecret: finalSecret,
-            environment: env,
+            environment: activeEnv,
             companyId: companyId || (companies[0]?.name ?? ''),
           },
           create: {
@@ -106,7 +137,7 @@ export async function POST(req: Request) {
             tenantId: finalTenant,
             clientId: finalClient,
             clientSecret: finalSecret,
-            environment: env,
+            environment: activeEnv,
             companyId: companyId || (companies[0]?.name ?? ''),
           }
         });
@@ -117,7 +148,10 @@ export async function POST(req: Request) {
 
     const res = NextResponse.json({
       ok: true,
-      message: 'Conexión verificada con éxito con Microsoft Dynamics 365 Business Central.',
+      detectedEnvironment: activeEnv !== environment?.trim() ? activeEnv : undefined,
+      message: activeEnv !== environment?.trim()
+        ? `Conexión verificada con éxito con Business Central (entorno detectado: "${activeEnv}").`
+        : 'Conexión verificada con éxito con Microsoft Dynamics 365 Business Central.',
       companies,
     });
 
