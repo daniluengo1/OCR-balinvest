@@ -88,7 +88,7 @@ const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 const squash = (s: string) => s.replace(/[\s.\-/]/g, '').toUpperCase();
 
 export async function pdfText(data: Uint8Array): Promise<string> {
-  const { text } = await extractText(await getDocumentProxy(data), { mergePages: true });
+  const { text } = await extractText(await getDocumentProxy(data.slice()), { mergePages: true });
   return String(text).replace(/[ \t]+/g, ' ').trim();
 }
 
@@ -1647,7 +1647,7 @@ export function segmentPages(pages: string[]): { docIndex: number; pages: number
 
 export async function splitMultiDocumentPdf(originalName: string, data: Uint8Array): Promise<SplitDocument[]> {
   try {
-    const proxy = await getDocumentProxy(data);
+    const proxy = await getDocumentProxy(data.slice());
     const { totalPages, text } = await extractText(proxy, { mergePages: false });
     if (totalPages <= 1) {
       return [];
@@ -1659,7 +1659,7 @@ export async function splitMultiDocumentPdf(originalName: string, data: Uint8Arr
     }
 
     const { PDFDocument } = await import('pdf-lib');
-    const srcDoc = await PDFDocument.load(data);
+    const srcDoc = await PDFDocument.load(data.slice());
     const results: SplitDocument[] = [];
     const baseName = originalName.replace(/\.pdf$/i, '');
 

@@ -23,11 +23,11 @@ export async function POST(req: Request) {
 
     // 1. Detectar si es un PDF unificado que contiene más de una factura o abono
     if (!explicitVendor) {
-      const splitDocs = await splitMultiDocumentPdf(file.name, data);
+      const splitDocs = await splitMultiDocumentPdf(file.name, data.slice());
       if (splitDocs.length > 1) {
         const documents = await Promise.all(
           splitDocs.map(async (doc) => {
-            const ocrRes = await processPdf(ctx, doc.fileName, doc.pdfBytes);
+            const ocrRes = await processPdf(ctx, doc.fileName, doc.pdfBytes.slice());
             return {
               ...ocrRes,
               file: doc.fileName,
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Documento único estándar
-    const result = await processPdf(ctx, file.name, data, explicitVendor);
+    const result = await processPdf(ctx, file.name, data.slice(), explicitVendor);
     return NextResponse.json({ company: ctx.companyName, multiDoc: false, ...result });
   } catch (error: any) {
     console.error('OCR parse error:', error);

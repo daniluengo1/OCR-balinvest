@@ -24,11 +24,11 @@ export async function POST(req: Request) {
 
     // Detectar si es un PDF unificado con múltiples facturas/abonos de venta
     if (!explicitCustomer) {
-      const splitDocs = await splitMultiDocumentPdf(file.name, data);
+      const splitDocs = await splitMultiDocumentPdf(file.name, data.slice());
       if (splitDocs.length > 1) {
         const documents = await Promise.all(
           splitDocs.map(async (doc) => {
-            const ocrRes = await processPdfSales(ctx, doc.fileName, doc.pdfBytes);
+            const ocrRes = await processPdfSales(ctx, doc.fileName, doc.pdfBytes.slice());
             return {
               ...ocrRes,
               file: doc.fileName,
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const result = await processPdfSales(ctx, file.name, data, explicitCustomer);
+    const result = await processPdfSales(ctx, file.name, data.slice(), explicitCustomer);
     return NextResponse.json({ company: ctx.companyName, multiDoc: false, ...result });
   } catch (error: any) {
     console.error('OCR ventas parse error:', error);
