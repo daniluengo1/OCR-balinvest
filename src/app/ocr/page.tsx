@@ -25,6 +25,7 @@ type Doc = {
   file: string; error?: string; loading?: boolean; scanned: boolean; currency: string; ids: string[];
   candidates: Candidate[]; vendor: Candidate | null; history: HistoryInvoice[]; suggestion: Suggestion | null;
   existing: { no: string; status: string }[]; warnings: string[];
+  pages?: number[]; originalFile?: string; isSplitDoc?: boolean;
 };
 // Valores editables de cada factura antes de crearla (importes como texto, formato es-ES)
 type FormLine = Omit<Line, 'quantity' | 'unitCost' | 'vatAmount'> & { quantity: string; unitCost: string; vatAmount: string };
@@ -186,6 +187,55 @@ export default function OcrPage() {
       const res = await fetch('/api/ocr/parse', { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Error al leer el PDF');
+
+      // Si el PDF contiene más de una factura o abono unificado:
+      if (json.multiDoc && Array.isArray(json.documents) && json.documents.length > 0) {
+        const accMap = new Map(accounts.map(a => [a.number, a.name]));
+        const itmMap = new Map(items.map(it => [it.number, it.name]));
+        const newFiles: File[] = [];
+        const newDocs: Doc[] = [];
+        const newForms: Record<string, Form> = {};
+        const newStatus: Record<string, any> = {};
+
+        for (const docResult of json.documents) {
+          let subFile: File;
+          if (docResult.pdfBase64) {
+            const byteChars = atob(docResult.pdfBase64);
+            const byteArr = new Uint8Array(byteChars.length);
+            for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+            subFile = new File([byteArr], docResult.file, { type: 'application/pdf' });
+          } else {
+            subFile = new File([], docResult.file, { type: 'application/pdf' });
+          }
+          newFiles.push(subFile);
+          newDocs.push({
+            ...docResult,
+            loading: false,
+          });
+          newForms[docResult.file] = toForm(docResult.suggestion, accMap, itmMap);
+          newStatus[docResult.file] = {};
+        }
+
+        setFiles(prev => [...prev.filter(f => f.name !== file.name), ...newFiles]);
+        setDocs(prev => [...prev.filter(doc => doc.file !== file.name), ...newDocs]);
+        setForms(prev => {
+          const { [file.name]: _, ...rest } = prev;
+          return { ...rest, ...newForms };
+        });
+        setStatus(prev => {
+          const { [file.name]: _, ...rest } = prev;
+          return { ...rest, ...newStatus };
+        });
+        setSelected(prev => {
+          const next = new Set(prev);
+          next.delete(file.name);
+          newDocs.forEach(d => { if (d.vendor) next.add(d.file); });
+          return next;
+        });
+        setNotice(`PDF unificado "${file.name}" dividido con éxito en ${newDocs.length} documentos independientes.`);
+        return;
+      }
+
       setDocs(l => l.map(d => (d.file === file.name ? { ...json, file: file.name, loading: false } : d)));
       const accMap = new Map(accounts.map(a => [a.number, a.name]));
       const itmMap = new Map(items.map(it => [it.number, it.name]));
@@ -564,6 +614,11 @@ function DocCard({ d, f, fileObj, attachments, accounts, loadingAccounts, items,
       </div>
 
       <div className="flex items-center gap-2.5 text-xs ml-auto">
+        {d.isSplitDoc && d.pages && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title={`Documento dividido del PDF unificado: ${d.originalFile}`}>
+            📄 {d.pages.length === 1 ? `Pág. ${d.pages[0]}` : `Págs. ${d.pages[0]}-${d.pages[d.pages.length - 1]}`}
+          </span>
+        )}
         <span className="text-gray-500 font-mono text-[11px] max-w-[200px] truncate" title={d.file}>
           {d.file}{d.scanned ? ' · escaneado' : ''}
         </span>

@@ -48,6 +48,7 @@ type Doc = {
   file: string; error?: string; loading?: boolean; scanned: boolean; currency: string; ids: string[];
   candidates: CustomerCandidate[]; customer: CustomerCandidate | null; history: HistoryInvoice[]; suggestion: Suggestion | null;
   existing: { no: string; status: string }[]; warnings: string[];
+  pages?: number[]; originalFile?: string; isSplitDoc?: boolean;
 };
 
 type FormLine = Omit<Line, 'quantity' | 'unitCost' | 'vatAmount'> & { quantity: string; unitCost: string; vatAmount: string };
@@ -203,6 +204,55 @@ export default function OcrVentasPage() {
       const res = await fetch('/api/ocr-ventas/parse', { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Error al leer el PDF de venta');
+
+      // Si el PDF contiene más de una factura o abono unificado:
+      if (json.multiDoc && Array.isArray(json.documents) && json.documents.length > 0) {
+        const accMap = new Map(accounts.map(a => [a.number, a.name]));
+        const itmMap = new Map(items.map(it => [it.number, it.name]));
+        const newFiles: File[] = [];
+        const newDocs: Doc[] = [];
+        const newForms: Record<string, Form> = {};
+        const newStatus: Record<string, any> = {};
+
+        for (const docResult of json.documents) {
+          let subFile: File;
+          if (docResult.pdfBase64) {
+            const byteChars = atob(docResult.pdfBase64);
+            const byteArr = new Uint8Array(byteChars.length);
+            for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+            subFile = new File([byteArr], docResult.file, { type: 'application/pdf' });
+          } else {
+            subFile = new File([], docResult.file, { type: 'application/pdf' });
+          }
+          newFiles.push(subFile);
+          newDocs.push({
+            ...docResult,
+            loading: false,
+          });
+          newForms[docResult.file] = toForm(docResult.suggestion, accMap, itmMap);
+          newStatus[docResult.file] = {};
+        }
+
+        setFiles(prev => [...prev.filter(f => f.name !== file.name), ...newFiles]);
+        setDocs(prev => [...prev.filter(doc => doc.file !== file.name), ...newDocs]);
+        setForms(prev => {
+          const { [file.name]: _, ...rest } = prev;
+          return { ...rest, ...newForms };
+        });
+        setStatus(prev => {
+          const { [file.name]: _, ...rest } = prev;
+          return { ...rest, ...newStatus };
+        });
+        setSelected(prev => {
+          const next = new Set(prev);
+          next.delete(file.name);
+          newDocs.forEach(d => { if (d.customer) next.add(d.file); });
+          return next;
+        });
+        setNotice(`PDF unificado "${file.name}" dividido con éxito en ${newDocs.length} documentos de venta independientes.`);
+        return;
+      }
+
       setDocs(l => l.map(d => (d.file === file.name ? { ...json, file: file.name, loading: false } : d)));
       const accMap = new Map(accounts.map(a => [a.number, a.name]));
       const itmMap = new Map(items.map(it => [it.number, it.name]));
@@ -587,6 +637,11 @@ export default function OcrVentasPage() {
                         {isCredit ? 'Abono de venta' : 'Factura de venta'}
                       </span>
                       <span className="font-bold text-gray-900 text-sm truncate max-w-md">{d.file}</span>
+                      {d.isSplitDoc && d.pages && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title={`Documento dividido del PDF unificado: ${d.originalFile}`}>
+                          📄 {d.pages.length === 1 ? `Pág. ${d.pages[0]}` : `Págs. ${d.pages[0]}-${d.pages[d.pages.length - 1]}`}
+                        </span>
+                      )}
                       {d.currency && (
                         <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
                           {d.currency}

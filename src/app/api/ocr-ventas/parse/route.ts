@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getBcContext } from '@/lib/bcClient';
 import { processPdfSales } from '@/lib/ocrVentas';
+import { splitMultiDocumentPdf } from '@/lib/ocr';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,13 +19,39 @@ export async function POST(req: Request) {
     }
 
     const ctx = await getBcContext(company);
-    const result = await processPdfSales(
-      ctx,
-      file.name,
-      new Uint8Array(await file.arrayBuffer()),
-      String(form.get('customer') || '') || undefined
-    );
-    return NextResponse.json({ company: ctx.companyName, ...result });
+    const data = new Uint8Array(await file.arrayBuffer());
+    const explicitCustomer = String(form.get('customer') || '') || undefined;
+
+    // Detectar si es un PDF unificado con múltiples facturas/abonos de venta
+    if (!explicitCustomer) {
+      const splitDocs = await splitMultiDocumentPdf(file.name, data);
+      if (splitDocs.length > 1) {
+        const documents = await Promise.all(
+          splitDocs.map(async (doc) => {
+            const ocrRes = await processPdfSales(ctx, doc.fileName, doc.pdfBytes);
+            return {
+              ...ocrRes,
+              file: doc.fileName,
+              originalFile: file.name,
+              pages: doc.pageNumbers,
+              pdfBase64: doc.pdfBase64,
+              isSplitDoc: true,
+            };
+          })
+        );
+
+        return NextResponse.json({
+          company: ctx.companyName,
+          multiDoc: true,
+          totalDocuments: documents.length,
+          originalFile: file.name,
+          documents,
+        });
+      }
+    }
+
+    const result = await processPdfSales(ctx, file.name, data, explicitCustomer);
+    return NextResponse.json({ company: ctx.companyName, multiDoc: false, ...result });
   } catch (error: any) {
     console.error('OCR ventas parse error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

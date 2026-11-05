@@ -800,7 +800,7 @@ export function guessHeader(t: string, filename?: string) {
       // IT
       /(?:numero\s+(?:della\s+)?fattura|fattura\s+n[º°o]?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
       // ES
-      /(?<!original\s+|rectificada\s+)(?:n[úu]mero\s+(?:de\s+)?factura|n[º°o]\.?\s+(?:de\s+)?factura|n[úu]m\.?\s+(?:de\s+)?factura)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      /(?<!original\s+|rectificada\s+)(?:n[úu]mero\s+(?:de\s+)?(?:la\s+)?factura|n[º°o]\.?\s+(?:de\s+)?(?:la\s+)?factura|n[úu]m\.?\s+(?:de\s+)?(?:la\s+)?factura)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
       /(?<!original\s+|rectificada\s+)(?:factura\s+n[º°o]\.?|factura\s+n[úu]mero|factura\s+n[úu]m\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
       /(?<!original\s+|rectificada\s+)(?:factura\s*[:#]\s*)([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
       // DE
@@ -1515,4 +1515,180 @@ export async function createOcrCreditMemo(ctx: BcContext, input: OcrCreateInput,
     currency: after?.currencyCode || 'EUR',
     warnings,
   };
+}
+
+// ============================================================================
+// DIVISIÓN AUTOMÁTICA DE PDFs MULTI-FACTURA / PAQUETES UNIFICADOS
+// ============================================================================
+export type SplitDocument = {
+  docIndex: number;
+  fileName: string;
+  pages: number[];
+  pageNumbers: number[];
+  invoiceNo?: string;
+  isCreditNote: boolean;
+  pdfBytes: Uint8Array;
+  pdfBase64: string;
+};
+
+export function parsePageIndicator(text: string): { current: number; total: number } | null {
+  const clean = text.replace(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/g, ' ');
+  const m = clean.match(/(?:p[áa]gina|page|seite|pag\.)\s+(\d{1,3})\s+(?:de|of|von|\/)\s+(\d{1,3})/i)
+    || clean.match(/(?<![\d.,\/\-%])(\d{1,2})\s*(?:\/|\s+de\s+)\s*(\d{1,2})(?![\d.,\/\-%])/i);
+
+  if (m) {
+    const cur = parseInt(m[1], 10);
+    const tot = parseInt(m[2], 10);
+    if (cur >= 1 && tot >= 1 && cur <= tot && tot <= 50) {
+      return { current: cur, total: tot };
+    }
+  }
+  return null;
+}
+
+export function segmentPages(pages: string[]): { docIndex: number; pages: number[]; invoiceNo?: string; isCreditNote: boolean }[] {
+  const n = pages.length;
+  if (n <= 1) return [{ docIndex: 0, pages: [0], isCreditNote: false }];
+
+  const metas = pages.map((rawText, idx) => {
+    const flatText = rawText.replace(/\s+/g, ' ');
+    const h = guessHeader(flatText);
+    const ind = parsePageIndicator(rawText);
+    const isCreditNote = /\b(nota\s+de\s+cr[eé]dito|abono|factura\s+rectificativa|credit\s+note|credit\s+memo|gutschrift|avoir)\b/i.test(flatText.slice(0, 1000));
+    const cifs = [...rawText.matchAll(/\b([ABCDEFGHJNPQRSUVW]\d{7}[0-9A-J]|[0-9]{8}[A-Z]|ES[0-9A-Z]{8,9})\b/g)].map(m => m[1].toUpperCase());
+    return {
+      pageIndex: idx,
+      text: flatText,
+      invoiceNo: h.invoiceNo,
+      invoiceDate: h.invoiceDate,
+      isCreditNote,
+      pageIndicator: ind,
+      cifs: [...new Set(cifs)],
+    };
+  });
+
+  const docs: { docIndex: number; pages: number[]; invoiceNo?: string; isCreditNote: boolean }[] = [];
+  let currentGroup: number[] = [0];
+  let currentInvNo = metas[0].invoiceNo;
+  let currentIsCredit = metas[0].isCreditNote;
+
+  for (let i = 1; i < n; i++) {
+    const prev = metas[i - 1];
+    const curr = metas[i];
+
+    let isNewDoc = false;
+
+    // 1. Numeración explícita de páginas (ej. 1/2 -> 2/2 no se divide, pero 1/1 o 2/2 -> 1/2 sí)
+    if (prev.pageIndicator && curr.pageIndicator) {
+      if (curr.pageIndicator.current === 1) {
+        isNewDoc = true;
+      } else if (curr.pageIndicator.current === prev.pageIndicator.current + 1 && curr.pageIndicator.total === prev.pageIndicator.total) {
+        isNewDoc = false;
+      }
+    } else if (prev.pageIndicator && prev.pageIndicator.current === prev.pageIndicator.total) {
+      isNewDoc = true;
+    }
+
+    // 2. Número de factura detectado
+    if (!isNewDoc) {
+      if (curr.invoiceNo && prev.invoiceNo) {
+        if (curr.invoiceNo !== prev.invoiceNo) {
+          isNewDoc = true;
+        } else {
+          isNewDoc = false;
+        }
+      } else if (curr.invoiceNo && !prev.invoiceNo) {
+        if (curr.pageIndicator?.current === 1 || curr.isCreditNote !== prev.isCreditNote) {
+          isNewDoc = true;
+        }
+      }
+    }
+
+    // 3. Cambio de tipo de documento (Factura vs Abono / Nota de crédito)
+    if (!isNewDoc && curr.isCreditNote !== prev.isCreditNote) {
+      isNewDoc = true;
+    }
+
+    // 4. Cambio evidente de CIF / NIF del emisor
+    if (!isNewDoc && curr.cifs.length && prev.cifs.length) {
+      const commonCifs = curr.cifs.filter(c => prev.cifs.includes(c));
+      if (commonCifs.length === 0 && (curr.invoiceNo || curr.isCreditNote || /factura|invoice|rechnung/i.test(curr.text.slice(0, 300)))) {
+        isNewDoc = true;
+      }
+    }
+
+    if (isNewDoc) {
+      docs.push({
+        docIndex: docs.length,
+        pages: [...currentGroup],
+        invoiceNo: currentInvNo,
+        isCreditNote: currentIsCredit,
+      });
+      currentGroup = [i];
+      currentInvNo = curr.invoiceNo;
+      currentIsCredit = curr.isCreditNote;
+    } else {
+      currentGroup.push(i);
+      if (!currentInvNo && curr.invoiceNo) currentInvNo = curr.invoiceNo;
+    }
+  }
+
+  if (currentGroup.length) {
+    docs.push({
+      docIndex: docs.length,
+      pages: [...currentGroup],
+      invoiceNo: currentInvNo,
+      isCreditNote: currentIsCredit,
+    });
+  }
+
+  return docs;
+}
+
+export async function splitMultiDocumentPdf(originalName: string, data: Uint8Array): Promise<SplitDocument[]> {
+  try {
+    const proxy = await getDocumentProxy(data);
+    const { totalPages, text } = await extractText(proxy, { mergePages: false });
+    if (totalPages <= 1) {
+      return [];
+    }
+
+    const segments = segmentPages(text);
+    if (segments.length <= 1) {
+      return [];
+    }
+
+    const { PDFDocument } = await import('pdf-lib');
+    const srcDoc = await PDFDocument.load(data);
+    const results: SplitDocument[] = [];
+    const baseName = originalName.replace(/\.pdf$/i, '');
+
+    for (const seg of segments) {
+      const subDoc = await PDFDocument.create();
+      const copiedPages = await subDoc.copyPages(srcDoc, seg.pages);
+      for (const cp of copiedPages) subDoc.addPage(cp);
+      const subBytes = await subDoc.save();
+
+      const pageStr = seg.pages.length === 1 ? `p${seg.pages[0] + 1}` : `p${seg.pages[0] + 1}-${seg.pages[seg.pages.length - 1] + 1}`;
+      const docTag = seg.isCreditNote ? 'abono' : 'factura';
+      const cleanInv = seg.invoiceNo ? `_${seg.invoiceNo.replace(/[^a-zA-Z0-9\-_]/g, '')}` : '';
+      const subFileName = `${baseName}_${docTag}_${pageStr}${cleanInv}.pdf`;
+
+      results.push({
+        docIndex: seg.docIndex,
+        fileName: subFileName,
+        pages: seg.pages,
+        pageNumbers: seg.pages.map(p => p + 1),
+        invoiceNo: seg.invoiceNo,
+        isCreditNote: seg.isCreditNote,
+        pdfBytes: subBytes,
+        pdfBase64: Buffer.from(subBytes).toString('base64'),
+      });
+    }
+
+    return results;
+  } catch (err) {
+    console.error('Error al dividir PDF unificado:', err);
+    return [];
+  }
 }
