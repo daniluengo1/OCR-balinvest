@@ -354,13 +354,13 @@ export default function OcrPage() {
 
   const changeVendor = (d: Doc, vendor: string) => { const f = files.find(x => x.name === d.file); if (f && vendor) parse(f, vendor); };
 
-  const create = async (d: Doc, confirmed = false) => {
+  const create = async (d: Doc, confirmed = false): Promise<boolean> => {
     const f = forms[d.file];
     const isCredit = f?.documentType === 'credit_note';
     const docLabel = isCredit ? 'el abono' : 'la factura';
-    if (!d.vendor || !f.invoiceNo.trim()) { setStatus(s => ({ ...s, [d.file]: { error: `Elige el proveedor y escribe el nº de ${isCredit ? 'abono' : 'factura'}.` } })); return; }
+    if (!d.vendor || !f.invoiceNo.trim()) { setStatus(s => ({ ...s, [d.file]: { error: `Elige el proveedor y escribe el nº de ${isCredit ? 'abono' : 'factura'}.` } })); return false; }
     const force = d.existing.length > 0;
-    if (force && !confirmed && !confirm(`El documento ${f.invoiceNo} de ${d.vendor.name} ya existe en BC (${d.existing.map(e => e.no).join(', ')}). ¿Crearlo de nuevo?`)) return;
+    if (force && !confirmed && !confirm(`El documento ${f.invoiceNo} de ${d.vendor.name} ya existe en BC (${d.existing.map(e => e.no).join(', ')}). ¿Crearlo de nuevo?`)) return false;
     setStatus(s => ({ ...s, [d.file]: { saving: true } }));
     try {
       const form = new FormData();
@@ -376,11 +376,13 @@ export default function OcrPage() {
       const res = await fetch('/api/ocr/create', { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Error al crear ${docLabel}`);
-      setStatus(s => ({ ...s, [d.file]: { created: json, warnings: json.warnings } }));
       await uploadAttachments(d.file, json.id);
-      setSelected(prev => { const n = new Set(prev); n.delete(d.file); return n; });
+      remove(d.file);
+      setNotice(`✅ ${isCredit ? 'Abono' : 'Factura'} ${f.invoiceNo} creada con éxito en BC (Nº ${json.no || json.number || json.id}).`);
+      return true;
     } catch (e: any) {
-      setStatus(s => ({ ...s, [d.file]: { error: e.message } }));
+      setStatus(s => ({ ...s, [d.file]: { error: e.message, saving: false } }));
+      return false;
     }
   };
   const ready = (d: Doc) => !d.error && !d.loading && !!d.vendor && !status[d.file]?.created;
@@ -388,7 +390,14 @@ export default function OcrPage() {
   const createSelected = async () => {
     const again = toSend.filter(d => d.existing.length);
     if (again.length && !confirm(`${again.length} de las ${toSend.length} facturas ya existen en BC (${again.map(d => forms[d.file]?.invoiceNo).join(', ')}). ¿Crearlas de nuevo también?`)) return;
-    for (const d of toSend) await create(d, true);
+    let count = 0;
+    for (const d of toSend) {
+      const ok = await create(d, true);
+      if (ok) count++;
+    }
+    if (count > 1) {
+      setNotice(`✅ Se han creado y enviado ${count} documentos a Business Central con éxito.`);
+    }
   };
   const toggle = (file: string) => setSelected(prev => { const n = new Set(prev); if (n.has(file)) n.delete(file); else n.add(file); return n; });
   const valid = docs.filter(ready);
@@ -494,7 +503,16 @@ export default function OcrPage() {
           </div>
         )}
 
-        {notice && <div className="rounded-lg border px-4 py-2 text-sm bg-amber-50 border-amber-200 text-amber-800">{notice}</div>}
+        {notice && (
+          <div className={`rounded-lg border px-4 py-2.5 text-sm flex items-center justify-between shadow-xs ${
+            notice.startsWith('✅')
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-medium'
+              : 'bg-amber-50 border-amber-200 text-amber-800'
+          }`}>
+            <span>{notice}</span>
+            <button onClick={() => setNotice(null)} className="ml-3 text-gray-400 hover:text-gray-700 font-bold">✕</button>
+          </div>
+        )}
         {(docs.some(d => d.loading) || valid.length > 1) && (
           <div className="flex flex-wrap items-center gap-3">
             {docs.some(d => d.loading) && <span className="text-sm text-gray-500 flex items-center gap-2"><RefreshCw size={14} className="animate-spin" /> Leyendo y buscando las facturas anteriores del proveedor…</span>}

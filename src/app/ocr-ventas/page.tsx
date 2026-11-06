@@ -344,9 +344,9 @@ export default function OcrVentasPage() {
     await read(invs);
   };
 
-  const create = async (file: string, force = false) => {
+  const create = async (file: string, force = false): Promise<boolean> => {
     const d = docs.find(x => x.file === file), f = forms[file];
-    if (!d || !f || !d.customer) return;
+    if (!d || !f || !d.customer) return false;
     setStatus(s => ({ ...s, [file]: { saving: true, error: null } }));
     try {
       const data = new FormData();
@@ -370,11 +370,10 @@ export default function OcrVentasPage() {
       if (!res.ok) {
         if (res.status === 409) {
           setStatus(s => ({ ...s, [file]: { saving: false, error: json.error, warnings: d.warnings } }));
-          return;
+          return false;
         }
         throw new Error(json.error || 'Error al crear documento de venta en BC');
       }
-      setStatus(s => ({ ...s, [file]: { saving: false, created: json, warnings: json.warnings } }));
 
       // Subir adjuntos secundarios si existen
       const myAtts = attachments.filter(a => a.target === file && !a.done);
@@ -392,14 +391,26 @@ export default function OcrVentasPage() {
           setAttachments(l => l.map(x => (x === a ? { ...x, error: e.message } : x)));
         }
       }
+
+      remove(file);
+      setNotice(`✅ ${f.documentType === 'credit_note' ? 'Abono de venta' : 'Factura de venta'} ${f.invoiceNo} creada con éxito en BC (${json.no || json.number || json.id}).`);
+      return true;
     } catch (e: any) {
       setStatus(s => ({ ...s, [file]: { saving: false, error: e.message } }));
+      return false;
     }
   };
 
   const createAll = async () => {
     const list = docs.filter(d => selected.has(d.file) && d.customer && !status[d.file]?.created && !status[d.file]?.saving);
-    for (const d of list) await create(d.file);
+    let count = 0;
+    for (const d of list) {
+      const ok = await create(d.file);
+      if (ok) count++;
+    }
+    if (count > 1) {
+      setNotice(`✅ Se han creado y enviado ${count} documentos de venta a Business Central con éxito.`);
+    }
   };
 
   const setCustomerFor = (file: string, customerNo: string) => {
@@ -467,9 +478,13 @@ export default function OcrVentasPage() {
       </div>
 
       {notice && (
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 flex items-center justify-between">
+        <div className={`rounded-lg border p-3 text-xs flex items-center justify-between shadow-xs ${
+          notice.startsWith('✅')
+            ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-medium'
+            : 'bg-blue-50 border-blue-200 text-blue-800'
+        }`}>
           <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-blue-500 hover:text-blue-800"><X size={14} /></button>
+          <button onClick={() => setNotice(null)} className="text-gray-400 hover:text-gray-700 font-bold ml-2"><X size={14} /></button>
         </div>
       )}
 
