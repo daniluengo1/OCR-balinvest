@@ -239,20 +239,38 @@ export async function matchVendors(ctx: BcContext, text: string, ids: string[], 
       score += 4;
       reasons.push(`NIF/CIF ${v.vat}`);
     }
+
+    // Comprobación si el código de proveedor en BC coincide con el NIF/CIF
+    const numClean = squash(v.number || '');
+    const numNoEs = numClean.replace(/^ES/, '');
+    const numHit = (numClean.length >= 8 && ids.includes(`vat:${numClean}`)) ||
+                   (numNoEs.length >= 8 && ids.includes(`vat:${numNoEs}`)) ||
+                   (numNoEs.length >= 8 && ids.includes(`vat:ES${numNoEs}`));
+    if (numHit && !vatHit) {
+      score += 4;
+      reasons.push(`Nº proveedor es NIF/CIF ${v.number}`);
+    }
+
     const doms = [v.email.split('@')[1], v.website.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]]
       .filter(Boolean).map(d => d!.toLowerCase().split('.').slice(-2).join('.'));
-    const dom = doms.find(d => !GENERIC_DOMAINS.test(d) && ids.includes(`dom:${d}`));
+    const dom = doms.find(d => !GENERIC_DOMAINS.test(d) && ids.some(id => {
+      if (!id.startsWith('dom:')) return false;
+      const idDom = id.slice(4);
+      const idBase = idDom.split('.')[0].replace(/^(?:grup|grupo|group)/, '');
+      const dBase = d.split('.')[0].replace(/^(?:grup|grupo|group)/, '');
+      return idDom === d || (idBase.length >= 4 && (idDom.includes(dBase) || d.includes(idBase)));
+    }));
     if (dom) {
       score += 3;
-      reasons.push(`dominio ${dom}`);
+      reasons.push(`dominio web/email ${dom}`);
     }
     const nw = nameWords(v.name);
-    const hit = nw.filter(w => words.has(w));
+    const hit = nw.filter(w => words.has(w) || flat.includes(w));
     if (hit.length && hit.some(w => w.length >= 4)) {
       score += 3 * hit.length / nw.length + 0.5 * (hit.length - 1);
       const full = norm(v.name.replace(/\([^)]*\)/g, ' ')).replace(/[^a-z0-9]+/g, ' ').trim();
       if (full.split(' ').length > 1 && flat.includes(full)) score += 1;
-      reasons.push(`nombre (${hit.length}/${nw.length} palabras)`);
+      reasons.push(`nombre (${hit.length}/${nw.length} palabras: [${hit.join(', ')}])`);
     }
     if (score < 1) continue;
 
@@ -291,8 +309,9 @@ export async function vendorByNumber(ctx: BcContext, number: string): Promise<Ve
 export async function searchVendors(ctx: BcContext, term: string) {
   const t = norm(term.trim());
   if (t.length < 2) return [];
+  const tSquashed = squash(term.trim());
   return (await vendorIndex(ctx)).vendors
-    .filter(v => v.number.toLowerCase().includes(t) || norm(v.name).includes(t))
+    .filter(v => v.number.toLowerCase().includes(t) || norm(v.name).includes(t) || (tSquashed.length >= 3 && squash(v.vat || '').includes(tSquashed)))
     .sort((a, b) => b.invoices - a.invoices)
     .slice(0, 20)
     .map(v => ({ number: v.number, name: v.name, currency: vendorCurrency(v) || companyCurrency(ctx.companyName), invoices: v.invoices }));
@@ -723,12 +742,16 @@ const STOP_WORDS = new Set([
   'original', 'copia', 'duplicado', 'rectificada', 'rectificativa', 'ausstellungsdatum',
   'ursprüngliche', 'ursprungliche', 'zeitraum', 'leistungsempfänger', 'leistungserbringer',
   'echeance', 'facturation', 'rechnung', 'rechnungsdatum', 'falligkeit', 'fattura', 'scadenza',
-  'factuur', 'vervaldatum', 'faktury', 'platnosc', 'splatnost', 'doklad'
+  'factuur', 'vervaldatum', 'faktury', 'platnosc', 'splatnost', 'doklad',
+  'corresponde', 'verificable', 'emitida', 'electronica', 'electrónica',
+  'simplificada', 'proforma', 'resumen', 'billing', 'profile', 'impuestos',
+  'actividad', 'informacion', 'movimiento', 'sociedad', 'limitada'
 ]);
 
 function cleanInvoiceCandidate(raw: string): string {
   if (!raw) return '';
-  const s = raw.trim().replace(/[.,;:]+$/, '');
+  const s = raw.trim().replace(/^[#:\s]+/, '').replace(/[.,;:]+$/, '');
+  if (!/\d/.test(s)) return ''; // ¡Una factura real siempre contiene al menos un dígito!
   if (STOP_WORDS.has(s.toLowerCase())) return '';
   if (s.length < 3 || s.length > 35) return '';
   if (/^0+$/.test(s)) return '';
@@ -748,6 +771,34 @@ export function guessHeader(t: string, filename?: string) {
     if (c) invoiceNo = c;
     tableInvDate = parseDate(headerTableMatch[2]);
     tableDueDate = parseDate(headerTableMatch[3]);
+  }
+
+  // 0b. Documento Factura (Doc.Fact. común en ERPs como Ametller, SAP, etc.)
+  if (!invoiceNo) {
+    const docFactMatch = t.match(/(?:doc\.?\s*fact\.?|documento\s+factura|dcmt\.?\s*fact\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu);
+    if (docFactMatch) {
+      const c = cleanInvoiceCandidate(docFactMatch[1]);
+      if (c) invoiceNo = c;
+    }
+  }
+
+  // 0c. Número de facturación / Factura de impuestos (Microsoft Azure / M365)
+  if (!invoiceNo) {
+    const billingMatch = t.match(/(?:n[úu]mero\s+de\s+facturaci[oó]n|n[º°o]\.?\s+de\s+facturaci[oó]n)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu)
+      || t.match(/(?:n[úu]mero\s+de\s+factura\s+de\s+impuestos)\s*[:.]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu);
+    if (billingMatch) {
+      const c = cleanInvoiceCandidate(billingMatch[1]);
+      if (c) invoiceNo = c;
+    }
+  }
+
+  // 0d. Series precedidas de almohadilla (#F26-0203, #INV-1234, etc.)
+  if (!invoiceNo) {
+    const hashSeriesMatch = t.match(/#([A-Z0-9\-_\/.]{3,})/i);
+    if (hashSeriesMatch) {
+      const c = cleanInvoiceCandidate(hashSeriesMatch[1]);
+      if (c) invoiceNo = c;
+    }
   }
 
   // 1. Patrones específicos de abono / nota de crédito / rectificativa en 9 idiomas
@@ -793,8 +844,9 @@ export function guessHeader(t: string, filename?: string) {
   // 3. Patrones de número de factura en los 9 idiomas
   if (!invoiceNo) {
     const invoicePatterns = [
-      // Factura de venta / Abono de venta
-      /(?<!original\s+|rectificada\s+)(?:factura(?:\s+de\s+venta)?|abono(?:\s+de\s+venta)?)\s*[:#]?\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      // Factura de venta / Abono de venta (con separador explícito o formato en mayúsculas)
+      /(?<!original\s+|rectificada\s+)(?:factura(?:\s+de\s+venta)?|abono(?:\s+de\s+venta)?)\s*[:#]\s*([A-Z0-9][A-Z0-9\-_\/.]{2,})/iu,
+      /(?<!original\s+|rectificada\s+)\bFACTURA\s+([A-Z0-9][A-Z0-9\-_\/.]{2,})\b/iu,
       // Series típicas Business Central / ERP España (FV26-00167, AV26-0001, FC26-02888, AC26-00012)
       /\b((?:FV|AV|FC|AC|FA|AB)\d{2}-\d{4,6})\b/i,
       // FR / BE
@@ -1545,6 +1597,17 @@ export function parsePageIndicator(text: string): { current: number; total: numb
       return { current: cur, total: tot };
     }
   }
+
+  // Formato apilado en pie de página (ej. Microsoft / PDF.js: "...Total EUR 89.494\n3/", "...US4\n4/")
+  const stacked = clean.trim().match(/(\d)\s*[\r\n]+\s*(\d)\s*\/\s*$/);
+  if (stacked) {
+    const tot = parseInt(stacked[1], 10);
+    const cur = parseInt(stacked[2], 10);
+    if (cur >= 1 && tot >= 1 && cur <= tot && tot <= 50) {
+      return { current: cur, total: tot };
+    }
+  }
+
   return null;
 }
 
@@ -1579,20 +1642,22 @@ export function segmentPages(pages: string[]): { docIndex: number; pages: number
     const curr = metas[i];
 
     let isNewDoc = false;
+    let isExplicitContinuation = false;
 
-    // 1. Numeración explícita de páginas (ej. 1/2 -> 2/2 no se divide, pero 1/1 o 2/2 -> 1/2 sí)
+    // 1. Numeración explícita de páginas (ej. 1/4 -> 2/4 -> 3/4 -> 4/4 nunca se divide)
     if (prev.pageIndicator && curr.pageIndicator) {
       if (curr.pageIndicator.current === 1) {
         isNewDoc = true;
       } else if (curr.pageIndicator.current === prev.pageIndicator.current + 1 && curr.pageIndicator.total === prev.pageIndicator.total) {
         isNewDoc = false;
+        isExplicitContinuation = true;
       }
     } else if (prev.pageIndicator && prev.pageIndicator.current === prev.pageIndicator.total) {
       isNewDoc = true;
     }
 
-    // 2. Número de factura detectado
-    if (!isNewDoc) {
+    // 2. Si no es continuación explícita de página anterior, evaluar número de factura y tipo
+    if (!isNewDoc && !isExplicitContinuation) {
       if (curr.invoiceNo && prev.invoiceNo) {
         if (curr.invoiceNo !== prev.invoiceNo) {
           isNewDoc = true;
@@ -1604,18 +1669,18 @@ export function segmentPages(pages: string[]): { docIndex: number; pages: number
           isNewDoc = true;
         }
       }
-    }
 
-    // 3. Cambio de tipo de documento (Factura vs Abono / Nota de crédito)
-    if (!isNewDoc && curr.isCreditNote !== prev.isCreditNote) {
-      isNewDoc = true;
-    }
-
-    // 4. Cambio evidente de CIF / NIF del emisor
-    if (!isNewDoc && curr.cifs.length && prev.cifs.length) {
-      const commonCifs = curr.cifs.filter(c => prev.cifs.includes(c));
-      if (commonCifs.length === 0 && (curr.invoiceNo || curr.isCreditNote || /factura|invoice|rechnung/i.test(curr.text.slice(0, 300)))) {
+      // 3. Cambio de tipo de documento (Factura vs Abono / Nota de crédito)
+      if (!isNewDoc && curr.isCreditNote !== prev.isCreditNote) {
         isNewDoc = true;
+      }
+
+      // 4. Cambio evidente de CIF / NIF del emisor
+      if (!isNewDoc && curr.cifs.length && prev.cifs.length) {
+        const commonCifs = curr.cifs.filter(c => prev.cifs.includes(c));
+        if (commonCifs.length === 0 && (curr.invoiceNo || curr.isCreditNote || /factura|invoice|rechnung/i.test(curr.text.slice(0, 300)))) {
+          isNewDoc = true;
+        }
       }
     }
 

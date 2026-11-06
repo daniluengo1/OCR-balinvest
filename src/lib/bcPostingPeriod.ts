@@ -78,7 +78,7 @@ export async function getBcPostingLimits(ctx: BcContext): Promise<BcPostingLimit
     console.error('Error al consultar generalLedgerSetup en BC:', err);
   }
 
-  // 2. Accounting Periods (Periodos contables / de IVA en BC)
+  // 2. Accounting Periods (Información informativa de periodos contables en BC)
   try {
     const apRes = await fetch(`${ctx.root}/api/v2.0/companies(${ctx.companyId})/accountingPeriods?$orderby=startingDate asc`, {
       headers: { Authorization: `Bearer ${ctx.token}`, Accept: 'application/json' },
@@ -87,23 +87,13 @@ export async function getBcPostingLimits(ctx: BcContext): Promise<BcPostingLimit
     if (apRes.ok) {
       const apData = await apRes.json();
       const periods: any[] = apData.value || [];
-      let firstOpenAfterClosed: any = null;
 
       for (let i = 0; i < periods.length; i++) {
         const p = periods[i];
         if (p.closed || p.dateLocked) {
           latestClosedPeriod = { startingDate: p.startingDate, name: (p.name || '').trim() };
-          if (i + 1 < periods.length) {
-            firstOpenAfterClosed = periods[i + 1];
-          }
         } else {
           openPeriodsCount++;
-        }
-      }
-
-      if (firstOpenAfterClosed?.startingDate) {
-        if (!earliestAllowedDate || firstOpenAfterClosed.startingDate > earliestAllowedDate) {
-          earliestAllowedDate = firstOpenAfterClosed.startingDate;
         }
       }
     }
