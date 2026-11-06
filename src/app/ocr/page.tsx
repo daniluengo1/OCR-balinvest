@@ -376,9 +376,14 @@ export default function OcrPage() {
       const res = await fetch('/api/ocr/create', { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Error al crear ${docLabel}`);
-      await uploadAttachments(d.file, json.id);
+      const docNo = json.no || json.number || json.id || '';
+      setNotice(`✅ ${isCredit ? 'Abono' : 'Factura'} ${f.invoiceNo} creada con éxito en BC (Nº ${docNo}).`);
+      try {
+        await uploadAttachments(d.file, json.id);
+      } catch (attErr) {
+        console.warn('Error subiendo adjuntos secundarios:', attErr);
+      }
       remove(d.file);
-      setNotice(`✅ ${isCredit ? 'Abono' : 'Factura'} ${f.invoiceNo} creada con éxito en BC (Nº ${json.no || json.number || json.id}).`);
       return true;
     } catch (e: any) {
       setStatus(s => ({ ...s, [d.file]: { error: e.message, saving: false } }));
@@ -562,6 +567,16 @@ function DocCard({ d, f, fileObj, attachments, accounts, loadingAccounts, items,
       URL.revokeObjectURL(url);
     };
   }, [fileObj]);
+
+  // Si por cualquier vía se detecta creada, auto-cerrar la tarjeta automáticamente
+  useEffect(() => {
+    if (st?.created) {
+      const timer = setTimeout(() => {
+        onRemove();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [st?.created, onRemove]);
 
   const s = d.suggestion;
   const isCredit = f?.documentType === 'credit_note';
